@@ -16,15 +16,22 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "EasternCanadaAAC.Rmd"),
   reqdPkgs = list("SpaDES.core (>= 3.0.4)", "ggplot2"),
-    parameters = bindrows(
-      defineParameter(
-        name = "replanInterval",
-        default = 10,
-        desc = "Years between AAC recalculation"
-      ),
-      
-      defineParameter(".plots", "character", "screen", NA, NA, "...")
+  parameters = bindrows(
+    
+    defineParameter(
+      name = "replanInterval",
+      class = "numeric",
+      default = 10,
+      desc = "Years between AAC recalculation"
     ),
+    
+    defineParameter(
+      name = ".plots",
+      class = "character",
+      default = "screen",
+      desc = "Plotting option"
+    )
+  ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
