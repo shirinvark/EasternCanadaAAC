@@ -16,27 +16,15 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "EasternCanadaAAC.Rmd"),
   reqdPkgs = list("SpaDES.core (>= 3.0.4)", "ggplot2"),
-  parameters = bindrows(
-    #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
-    defineParameter(".plots", "character", "screen", NA, NA,
-                    "Used by Plots function, which can be optionally used here"),
-    defineParameter(".plotInitialTime", "numeric", start(sim), NA, NA,
-                    "Describes the simulation time at which the first plot event should occur."),
-    defineParameter(".plotInterval", "numeric", NA, NA, NA,
-                    "Describes the simulation time interval between plot events."),
-    defineParameter(".saveInitialTime", "numeric", NA, NA, NA,
-                    "Describes the simulation time at which the first save event should occur."),
-    defineParameter(".saveInterval", "numeric", NA, NA, NA,
-                    "This describes the simulation time interval between save events."),
-    defineParameter(".studyAreaName", "character", NA, NA, NA,
-                    "Human-readable name for the study area used - e.g., a hash of the study",
-                          "area obtained using `reproducible::studyAreaName()`"),
-    ## .seed is optional: `list('init' = 123)` will `set.seed(123)` for the `init` event only.
-    defineParameter(".seed", "list", list(), NA, NA,
-                    "Named list of seeds to use for each event (names)."),
-    defineParameter(".useCache", "logical", FALSE, NA, NA,
-                    "Should caching of events or module be used?")
-  ),
+    parameters = bindrows(
+      defineParameter(
+        name = "replanInterval",
+        default = 10,
+        desc = "Years between AAC recalculation"
+      ),
+      
+      defineParameter(".plots", "character", "screen", NA, NA, "...")
+    ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
@@ -56,7 +44,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     },
     plan = {
       sim <- Plan(sim)
-      sim <- scheduleEvent(sim, time(sim) + P(sim)$replanInterval, "Hanzlik", "plan")
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$replanInterval, "EasternCanadaAAC", "plan")
     },
     warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
                   "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
