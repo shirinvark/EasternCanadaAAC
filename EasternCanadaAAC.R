@@ -47,146 +47,85 @@ defineModule(sim, list(
   )
 ))
 
-doEvent.EasternCanadaAAC = function(sim, eventTime, eventType) {
+doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   switch(
     eventType,
     init = {
-      ### check for more detailed object dependencies:
-      ### (use `checkObject` or similar)
-
-      # do stuff for this event
       sim <- Init(sim)
-
-      # schedule future event(s)
-      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "EasternCanadaAAC", "plot")
-      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "EasternCanadaAAC", "save")
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$replanInterval, "EasternCanadaAAC", "plan")
     },
-    plot = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      plotFun(sim) # example of a plotting function
-      # schedule future event(s)
-
-      # e.g.,
-      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "EasternCanadaAAC", "plot")
-
-      # ! ----- STOP EDITING ----- ! #
+    plan = {
+      sim <- Plan(sim)
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$replanInterval, "Hanzlik", "plan")
     },
-    save = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "EasternCanadaAAC", "save")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event1 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "EasternCanadaAAC", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event2 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "EasternCanadaAAC", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    warning(noEventWarning(sim))
+    warning(paste("Undefined event type: '", current(sim)[1, "eventType", with = FALSE],
+                  "' in module '", current(sim)[1, "moduleName", with = FALSE], "'", sep = ""))
   )
   return(invisible(sim))
 }
 
+
+
+calcHanzlik <- function(ytM, sim){
+
+  if (is.matrix(ytM)){
+    idx <- dim(ytM)[2]
+    yt <- ytM[idx]
+  }
+  else if (is.numeric(ytM)){
+    yt = ytM
+  }
+  else
+    stop("illegal yield table: matrix expected")
+  n <- length(yt)
+  vt<- yt/1:n
+  #plot(vt)
+  R <- order(vt,decreasing=TRUE)[1] #trouve le age de la culmination
+  inc <- c(0, diff(yt))
+  tmp <- yt[R:n]/(P(sim)$rationPeriodMultiplier*R)     #contribution of each age class to Vm/R in m^3/ha
+  tmp <- c(inc[1:R-1], tmp)
+  
+  return(list(R=R,I=inc,hVec=tmp))   #should not alter Vm after initial plan?
+  
+}
+
 ### template initialization
 Init <- function(sim) {
-  # # ! ----- EDIT BELOW ----- ! #
-
-  # ! ----- STOP EDITING ----- ! #
-
-  return(invisible(sim))
-}
-### template for save events
-Save <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sim <- saveFiles(sim)
-
-  # ! ----- STOP EDITING ----- ! #
+  
+  sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim) # we assume there is a list these structures
+  
   return(invisible(sim))
 }
 
-### template for plot events
-plotFun <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sampleData <- data.frame("TheSample" = sample(1:10, replace = TRUE))
-  Plots(sampleData, fn = ggplotFn) # needs ggplot2
 
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event1
-Event1 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event1Test1 <- " this is test for event 1. " # for dummy unit test
-  # sim$event1Test2 <- 999 # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event2
-Event2 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event2Test1 <- " this is test for event 2. " # for dummy unit test
-  # sim$event2Test2 <- 777  # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
+Plan <- function(sim) {
+  #browser()
+  hVec<-sim$hanzlikPars[[1]]$hVec  
+  sim$cellSize <- prod(terra::res(sim$standAgeMap))
+  #for now, assume annualCut has at least one object, and take the 1st
+  #Comment peut-on le generaliser pour plusieurs courbes de rendemment?
+  nh <- length(hVec)
+  res<-rep(0,nh)
+  ages <- sim$standAgeMap[]
+  ages <- ifelse(ages > nh, nh, ages) #silently truncate
+  x<-tabulate(ages)  #NAs are silently ignored   
+  nx<-length(x)
+  if (nx <= nh){
+    res[1:nx] <- x
+  }
+  else {
+    res <- x[1:nh]
+    x[nh] <- x[nh] + sum(x[nh+1:nx]) #accumulate any "missing ones"
+  }
+  
+  res<-sum(res*hVec) * sim$cellSize  #OOPS
+  message(sprintf("Hanzlik:Plan. %d AAC = %5.1f x 1000 m^3\n",as.integer(time(sim)),res/1e3))
+  sim$annualCut <- res  
   return(invisible(sim))
 }
 
 .inputObjects <- function(sim) {
-  # Any code written here will be run during the simInit for the purpose of creating
-  # any objects required by this module and identified in the inputObjects element of defineModule.
-  # This is useful if there is something required before simulation to produce the module
-  # object dependencies, including such things as downloading default datasets, e.g.,
-  # downloadData("LCC2005", modulePath(sim)).
-  # Nothing should be created here that does not create a named object in inputObjects.
-  # Any other initiation procedures should be put in "init" eventType of the doEvent function.
-  # Note: the module developer can check if an object is 'suppliedElsewhere' to
-  # selectively skip unnecessary steps because the user has provided those inputObjects in the
-  # simInit call, or another module will supply or has supplied it. e.g.,
-  # if (!suppliedElsewhere('defaultColor', sim)) {
-  #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
-  # }
-
-  #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
+ 
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
@@ -194,10 +133,5 @@ Event2 <- function(sim) {
 
   # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
-}
-
-ggplotFn <- function(data, ...) {
-  ggplot2::ggplot(data, ggplot2::aes(TheSample)) +
-    ggplot2::geom_histogram(...)
 }
 
