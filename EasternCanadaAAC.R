@@ -99,7 +99,7 @@ Plan <- function(sim) {
   AUvals <- terra::values(sim$analysisUnitMap)
   print(head(AUvals))
   curveID <- AUvals
-  hVec<-sim$hanzlikPars[[1]]$hVec  
+  hVec <- sim$hanzlikPars[[curveID[1]]]$hVec
   sim$cellSize <- prod(terra::res(sim$standAgeMap))
   #for now, assume annualCut has at least one object, and take the 1st
   #Comment peut-on le generaliser pour plusieurs courbes de rendemment?
