@@ -47,7 +47,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     eventType,
     init = {
       sim <- Init(sim)
-      sim <- scheduleEvent(sim, time(sim) + P(sim)$replanInterval, "EasternCanadaAAC", "plan")
+      sim <- scheduleEvent(sim, time(sim), "EasternCanadaAAC", "plan")
     },
     plan = {
       sim <- Plan(sim)
