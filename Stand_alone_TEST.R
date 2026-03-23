@@ -74,7 +74,16 @@ yieldTables <- matrix(
   runif(13*5, 0, 200),
   nrow = 5
 )
+standAgeMap <- terra::rast(
+  nrows = 10,
+  ncols = 10,
+  xmin = 0,
+  xmax = 1000,
+  ymin = 0,
+  ymax = 1000
+)
 
+terra::values(standAgeMap) <- sample(1:100, 100, replace = TRUE)
 # =========================================================
 # INITIALIZE SIMULATION
 # =========================================================
@@ -97,7 +106,7 @@ sim <- simInit(
     spades.progress   = FALSE
   )
 )
-
+sim$standAgeMap <- standAgeMap
 # =========================================================
 # RUN MODEL
 # =========================================================

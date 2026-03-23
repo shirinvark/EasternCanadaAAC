@@ -95,6 +95,7 @@ Init <- function(sim) {
 
 Plan <- function(sim) {
   #browser()
+  print(sim$analysisUnitMap)
   hVec<-sim$hanzlikPars[[1]]$hVec  
   sim$cellSize <- prod(terra::res(sim$standAgeMap))
   #for now, assume annualCut has at least one object, and take the 1st
