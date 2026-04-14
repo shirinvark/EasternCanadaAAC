@@ -78,7 +78,7 @@ calcHanzlik <- function(ytM, sim){
 
   if (is.matrix(ytM)){
     idx <- dim(ytM)[2]
-    yt <- ytM[idx]
+    yt <- ytM[, idx]
   }
   else if (is.numeric(ytM)){
     yt = ytM
@@ -131,7 +131,7 @@ Plan <- function(sim) {
   # 🔹 3. محاسبه AAC برای هر AU
   AAC_by_AU <- dt[, .(
     AAC = {
-      pars <- sim$hanzlikPars[[as.character(AU[1])]]
+      pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
       ages <- pmin(pmax(age, 1), length(pars$hVec))
       sum(pars$hVec[ages])
     }
