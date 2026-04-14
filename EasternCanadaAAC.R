@@ -24,6 +24,12 @@ defineModule(sim, list(
       default = 10,
       desc = "Years between AAC recalculation"
     ),
+    defineParameter(
+      name = "rotationPeriodMultiplier",
+      class = "numeric",
+      default = 1,
+      desc = "Multiplier for Hanzlik rotation"
+    ),
     
     defineParameter(
       name = ".plots",
@@ -32,16 +38,23 @@ defineModule(sim, list(
       desc = "Plotting option"
     )
   ),
-  inputObjects = bindrows(
-    #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    inputObjects = bindrows(
+      
+      expectsInput("analysisUnitMap", "SpatRaster",
+                   "Map of analysis units per pixel"),
+      
+      expectsInput("standAgeMap", "SpatRaster",
+                   "Stand age per pixel"),
+      
+      expectsInput("yieldTables", "list",
+                   "Yield tables per AU")
   ),
-  outputObjects = bindrows(
-    #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
-  )
-))
+    outputObjects = bindrows(
+  createsOutput("AAC", "numeric",
+                "Annual Allowable Cut (m3/year)")
 
+))
+)
 doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   switch(
     eventType,
@@ -77,7 +90,7 @@ calcHanzlik <- function(ytM, sim){
   #plot(vt)
   R <- order(vt,decreasing=TRUE)[1] #trouve le age de la culmination
   inc <- c(0, diff(yt))
-  tmp <- yt[R:n]/(P(sim)$rationPeriodMultiplier*R)     #contribution of each age class to Vm/R in m^3/ha
+  tmp <- yt[R:n]/(P(sim)$rotationPeriodMultiplier * R)    #contribution of each age class to Vm/R in m^3/ha
   tmp <- c(inc[1:R-1], tmp)
   
   return(list(R=R,I=inc,hVec=tmp))   #should not alter Vm after initial plan?
@@ -87,41 +100,59 @@ calcHanzlik <- function(ytM, sim){
 ### template initialization
 Init <- function(sim) {
   
-  sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim) # we assume there is a list these structures
+  sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim)
+  
+  # 🔥 این خط خیلی مهمه
+  names(sim$hanzlikPars) <- names(sim$yieldTables)
   
   return(invisible(sim))
 }
 
 
 Plan <- function(sim) {
-  #browser()
-  print(sim$analysisUnitMap)
-  AUvals <- terra::values(sim$analysisUnitMap)
-  print(head(AUvals))
-  curveID <- AUvals
-  hVec <- sim$hanzlikPars[[curveID[1]]]$hVec
-  sim$cellSize <- prod(terra::res(sim$standAgeMap))
-  #for now, assume annualCut has at least one object, and take the 1st
-  #Comment peut-on le generaliser pour plusieurs courbes de rendemment?
-  nh <- length(hVec)
-  res<-rep(0,nh)
-  ages <- sim$standAgeMap[]
-  ages <- ifelse(ages > nh, nh, ages) #silently truncate
-  x<-tabulate(ages)  #NAs are silently ignored   
-  nx<-length(x)
-  if (nx <= nh){
-    res[1:nx] <- x
-  }
-  else {
-    res <- x[1:nh]
-    x[nh] <- x[nh] + sum(x[nh+1:nx]) #accumulate any "missing ones"
-  }
   
-  res<-sum(res*hVec) * sim$cellSize  #OOPS
-  message(sprintf("Hanzlik:Plan. %d AAC = %5.1f x 1000 m^3\n",as.integer(time(sim)),res/1e3))
-  sim$annualCut <- res  
+  # 🔹 1. گرفتن AU و سن
+  AUvals <- terra::values(sim$analysisUnitMap)
+  ageVals <- terra::values(sim$standAgeMap)
+  
+  dt <- data.table::data.table(
+    AU = AUvals,
+    age = ageVals
+  )
+  
+  dt <- dt[!is.na(AU) & !is.na(age)]
+  
+  # 🔹 2. گروه‌بندی بر اساس AU
+  dt[, age := floor(age)]
+  # 🔴 چک حیاتی: آیا همه AUها yield دارن؟
+  if (!all(unique(dt$AU) %in% names(sim$hanzlikPars))) {
+    stop("Some AU values do not match yieldTables!")
+  }
+  # 🔹 3. محاسبه AAC برای هر AU
+  AAC_by_AU <- dt[, .(
+    AAC = {
+      pars <- sim$hanzlikPars[[as.character(AU[1])]]
+      ages <- pmin(pmax(age, 1), length(pars$hVec))
+      sum(pars$hVec[ages])
+    }
+  ), by = AU]
+  
+  # 🔹 4. مساحت هر پیکسل (ha)
+  cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
+  
+  # 🔹 5. AAC کل
+  totalAAC <- sum(AAC_by_AU$AAC) * cellArea_ha  
+  # 🔹 6. ذخیره
+  sim$AAC <- totalAAC
+  
+  message(sprintf(
+    "Year %d | AAC = %.2f m3/year",
+    time(sim), totalAAC
+  ))
+  
   return(invisible(sim))
 }
+
 
 .inputObjects <- function(sim) {
  
