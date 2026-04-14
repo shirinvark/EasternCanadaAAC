@@ -112,11 +112,11 @@ Init <- function(sim) {
 Plan <- function(sim) {
   
   # 🔹 1. گرفتن AU و سن
-  AUvals <- terra::values(sim$analysisUnitMap)
-  ageVals <- terra::values(sim$standAgeMap)
+  AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
+  ageVals <- as.vector(terra::values(sim$standAgeMap))
   
-  dt <- data.table::data.table(
-    AU = AUvals,
+  dt <- data.table(
+    AU  = AUvals,
     age = ageVals
   )
   
