@@ -25,7 +25,7 @@ setPaths(
 print(getPaths())
 
 # =========================================================
-# DOWNLOAD AAC MODULE
+# DOWNLOAD MODULE
 # =========================================================
 
 SpaDES.project::getModule(
@@ -35,11 +35,10 @@ SpaDES.project::getModule(
 )
 
 # =========================================================
-# CREATE TEST DATA
+# CREATE TEST DATA (MINIMAL + CORRECT)
 # =========================================================
 
-# Fake analysisUnitMap
-
+# 🔹 analysisUnitMap (3 AU فقط برای سادگی)
 analysisUnitMap <- rast(
   nrows = 10,
   ncols = 10,
@@ -49,41 +48,37 @@ analysisUnitMap <- rast(
   ymax  = 1000
 )
 
-values(analysisUnitMap) <- sample(1:5, 100, replace = TRUE)
+values(analysisUnitMap) <- sample(1:3, 100, replace = TRUE)
 
-# Fake area table
-
-areaByAU <- data.table(
-  analysisUnit = 1:5,
-  area_ha = runif(5, 1000, 5000)
-)
-
-# Fake age summary
-
-ageSummaryByAU <- data.table(
-  analysisUnit = 1:5,
-  meanAge = sample(20:120, 5),
-  nStands = sample(50:200, 5)
-)
-
-# Fake yield curves
-
-yieldAges <- seq(0,120,10)
-
-yieldTables <- matrix(
-  runif(13*5, 0, 200),
-  nrow = 5
-)
-standAgeMap <- terra::rast(
+# 🔹 standAgeMap
+standAgeMap <- rast(
   nrows = 10,
   ncols = 10,
-  xmin = 0,
-  xmax = 1000,
-  ymin = 0,
-  ymax = 1000
+  xmin  = 0,
+  xmax  = 1000,
+  ymin  = 0,
+  ymax  = 1000
 )
 
-terra::values(standAgeMap) <- sample(1:100, 100, replace = TRUE)
+values(standAgeMap) <- sample(1:80, 100, replace = TRUE)
+
+# 🔹 yieldTables (مهم‌ترین بخش)
+# هر AU یک curve
+# باید list باشه + اسم‌ها match AU
+
+yieldTables <- list(
+  "1" = cumsum(rep(2, 100)),
+  "2" = cumsum(rep(3, 100)),
+  "3" = cumsum(rep(4, 100))
+)
+
+# =========================================================
+# SANITY CHECK (خیلی مهم قبل اجرا)
+# =========================================================
+
+print(unique(values(analysisUnitMap)))
+print(names(yieldTables))
+
 # =========================================================
 # INITIALIZE SIMULATION
 # =========================================================
@@ -94,10 +89,8 @@ sim <- simInit(
   
   objects = list(
     analysisUnitMap = analysisUnitMap,
-    areaByAU = areaByAU,
-    ageSummaryByAU = ageSummaryByAU,
-    yieldTables = yieldTables,
-    yieldAges = yieldAges
+    standAgeMap     = standAgeMap,
+    yieldTables     = yieldTables
   ),
   
   options = list(
@@ -106,7 +99,7 @@ sim <- simInit(
     spades.progress   = FALSE
   )
 )
-sim$standAgeMap <- standAgeMap
+
 # =========================================================
 # RUN MODEL
 # =========================================================
@@ -120,4 +113,7 @@ system.time({
 # =========================================================
 
 print(names(sim))
+print(sim$AAC)
 
+# optional debug
+print(sim$hanzlikPars)
