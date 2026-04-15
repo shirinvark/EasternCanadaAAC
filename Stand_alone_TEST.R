@@ -66,10 +66,58 @@ values(standAgeMap) <- sample(1:80, 100, replace = TRUE)
 # هر AU یک curve
 # باید list باشه + اسم‌ها match AU
 
+#yieldTables <- list(
+ # "1" = cumsum(seq(0.5, 2, length.out = 100)),
+  #"2" = cumsum(seq(1, 3, length.out = 100)),
+  #"3" = cumsum(seq(1, 4, length.out = 100))
+#)
+# =========================================================
+# READ REAL YIELD (.yld)
+# =========================================================
+
+lines <- readLines("E:/EasternCanadaClassifier/data/NL/YTF/BarNS_sub_all.yld")
+
+# پیدا کردن شروع جدول
+start <- grep("Age", lines)[1]
+
+# حذف header و خواندن بدون header
+tab <- read.table(
+  text = lines[(start+1):length(lines)],
+  header = FALSE,
+  fill = TRUE
+)
+
+# اسم ستون‌ها رو دستی بده (بر اساس NL structure)
+colnames(tab) <- c("Age", "BSv", "WSv", "BFv", "WPv", "TLv", "YBv")
+
+# حالا کار می‌کنه 👇
+yt <- tab$BSv
+
+# اگر خواستی کل volume:
+# yt <- tab$BSv + tab$WSv + tab$BFv
+
+# =========================================================
+# INTERPOLATE TO ANNUAL
+# =========================================================
+
+yt_interp <- approx(
+  x = tab$Age,
+  y = yt,
+  xout = 1:100
+)$y
+
+yt_interp[is.na(yt_interp)] <- 0
+yt_interp <- stats::filter(yt_interp, rep(1/3, 3), sides = 2)
+yt_interp <- as.numeric(yt_interp)
+yt_interp <- pmax(yt_interp, 0)
+# =========================================================
+# USE IN MODEL
+# =========================================================
+
 yieldTables <- list(
-  "1" = cumsum(rep(2, 100)),
-  "2" = cumsum(rep(3, 100)),
-  "3" = cumsum(rep(4, 100))
+  "1" = yt_interp,
+  "2" = yt_interp,
+  "3" = yt_interp
 )
 
 # =========================================================
@@ -117,3 +165,4 @@ print(sim$AAC)
 
 # optional debug
 print(sim$hanzlikPars)
+
