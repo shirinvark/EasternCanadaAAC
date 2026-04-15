@@ -155,13 +155,113 @@ Plan <- function(sim) {
 
 
 .inputObjects <- function(sim) {
- 
+  
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
-
-  # ! ----- EDIT BELOW ----- ! #
-
-  # ! ----- STOP EDITING ----- ! #
+  
+  # =========================================================
+  # analysisUnitMap
+  # =========================================================
+  
+  if (!is.null(sim$analysisUnitMap) && inherits(sim$analysisUnitMap, "SpatRaster")) {
+    
+    message("Using supplied analysisUnitMap")
+    
+  } else {
+    
+    message("Creating fake analysisUnitMap...")
+    
+    analysisUnitMap <- terra::rast(
+      nrows = 10, ncols = 10,
+      xmin = 0, xmax = 1000,
+      ymin = 0, ymax = 1000
+    )
+    
+    terra::values(analysisUnitMap) <- sample(1:3, 100, replace = TRUE)
+    
+    sim$analysisUnitMap <- analysisUnitMap
+  }
+  # =========================================================
+  # standAgeMap
+  # =========================================================
+  
+  if (!is.null(sim$standAgeMap)) {
+    
+    message("Using supplied standAgeMap")
+    
+  } else {
+    
+    message("Creating fake standAgeMap...")
+    
+    standAgeMap <- terra::rast(
+      nrows = 10, ncols = 10,
+      xmin = 0, xmax = 1000,
+      ymin = 0, ymax = 1000
+    )
+    
+    terra::values(standAgeMap) <- sample(1:80, 100, replace = TRUE)
+    
+    sim$standAgeMap <- standAgeMap
+  }
+  
+  # =========================================================
+  # yieldTables
+  # =========================================================
+  
+  if (!is.null(sim$yieldTables)) {
+    
+    message("Using supplied yieldTables")
+    
+  } else {
+    
+    message("No yieldTables supplied → reading .yld OR fallback to fake")
+    
+    yldFile <- file.path(dPath, "NL/YTF/BarNS_sub_all.yld")
+    
+    if (file.exists(yldFile)) {
+      
+      message("Reading real .yld file...")
+      
+      lines <- readLines(yldFile)
+      start <- grep("Age", lines)[1]
+      
+      tab <- read.table(
+        text = lines[(start+1):length(lines)],
+        header = FALSE,
+        fill = TRUE
+      )
+      
+      colnames(tab) <- c("Age", "BSv", "WSv", "BFv", "WPv", "TLv", "YBv")
+      
+      yt <- tab$BSv
+      
+      yt_interp <- approx(
+        x = tab$Age,
+        y = yt,
+        xout = 1:100
+      )$y
+      
+      yt_interp[is.na(yt_interp)] <- 0
+      
+      sim$yieldTables <- list(
+        "1" = yt_interp,
+        "2" = yt_interp,
+        "3" = yt_interp
+      )
+      
+    } else {
+      
+      message("No .yld file found → using fake yieldTables")
+      
+      yt <- cumsum(seq(1, 3, length.out = 100))
+      
+      sim$yieldTables <- list(
+        "1" = yt,
+        "2" = yt,
+        "3" = yt
+      )
+    }
+  }
+  
   return(invisible(sim))
 }
-
