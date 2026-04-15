@@ -208,59 +208,27 @@ Plan <- function(sim) {
   # yieldTables
   # =========================================================
   
-  if (!is.null(sim$yieldTables)) {
+  if ("yieldTables" %in% names(sim)) {
     
     message("Using supplied yieldTables")
     
   } else {
     
-    message("No yieldTables supplied → reading .yld OR fallback to fake")
+    message("No yieldTables supplied → creating based on AU")
     
-    yldFile <- file.path(dPath, "NL/YTF/BarNS_sub_all.yld")
+    # 🔹 اول AU ها رو بگیر
+    AUvals <- unique(terra::values(sim$analysisUnitMap))
+    AUvals <- AUvals[!is.na(AUvals)]
     
-    if (file.exists(yldFile)) {
-      
-      message("Reading real .yld file...")
-      
-      lines <- readLines(yldFile)
-      start <- grep("Age", lines)[1]
-      
-      tab <- read.table(
-        text = lines[(start+1):length(lines)],
-        header = FALSE,
-        fill = TRUE
-      )
-      
-      colnames(tab) <- c("Age", "BSv", "WSv", "BFv", "WPv", "TLv", "YBv")
-      
-      yt <- tab$BSv
-      
-      yt_interp <- approx(
-        x = tab$Age,
-        y = yt,
-        xout = 1:100
-      )$y
-      
-      yt_interp[is.na(yt_interp)] <- 0
-      
-      sim$yieldTables <- list(
-        "1" = yt_interp,
-        "2" = yt_interp,
-        "3" = yt_interp
-      )
-      
-    } else {
-      
-      message("No .yld file found → using fake yieldTables")
-      
-      yt <- cumsum(seq(1, 3, length.out = 100))
-      
-      sim$yieldTables <- list(
-        "1" = yt,
-        "2" = yt,
-        "3" = yt
-      )
-    }
+    # 🔹 یه yield ساده بساز (یا از .yld اگر خواستی)
+    yt <- cumsum(seq(1, 3, length.out = 100))
+    
+    # 🔹 برای هر AU یک curve بساز
+    sim$yieldTables <- setNames(
+      replicate(length(AUvals), yt, simplify = FALSE),
+      as.character(AUvals)
+    )
+  }
   }
   
   return(invisible(sim))
