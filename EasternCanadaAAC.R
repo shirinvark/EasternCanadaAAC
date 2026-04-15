@@ -229,7 +229,6 @@ Plan <- function(sim) {
       as.character(AUvals)
     )
   }
-  }
   
   return(invisible(sim))
 }
