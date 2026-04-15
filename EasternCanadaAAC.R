@@ -72,90 +72,152 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   return(invisible(sim))
 }
 
-
-
-calcHanzlik <- function(ytM, sim){
-
-  if (is.matrix(ytM)){
-    idx <- dim(ytM)[2]
-    yt <- ytM[, idx]
-  }
-  else if (is.numeric(ytM)){
-    yt = ytM
-  }
-  else
-    stop("illegal yield table: matrix expected")
-  n <- length(yt)
-  vt<- yt/1:n
-  #plot(vt)
-  R <- order(vt,decreasing=TRUE)[1] #trouve le age de la culmination
-  inc <- c(0, diff(yt))
-  tmp <- yt[R:n]/(P(sim)$rotationPeriodMultiplier * R)    #contribution of each age class to Vm/R in m^3/ha
-  tmp <- c(inc[1:R-1], tmp)
-  
-  return(list(R=R,I=inc,hVec=tmp))   #should not alter Vm after initial plan?
-  
-}
-
-### template initialization
-Init <- function(sim) {
-  
-  sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim)
-  
-  # 🔥 این خط خیلی مهمه
-  names(sim$hanzlikPars) <- names(sim$yieldTables)
-  
-  return(invisible(sim))
-}
-
-
-Plan <- function(sim) {
-  
-  # 🔹 1. گرفتن AU و سن
-  AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
-  ageVals <- as.vector(terra::values(sim$standAgeMap))
-  
-  dt <- data.table(
-    AU  = AUvals,
-    age = ageVals
-  )
-  
-  dt <- dt[!is.na(AU) & !is.na(age)]
-  
-  # 🔹 2. گروه‌بندی بر اساس AU
-  dt[, age := floor(age)]
-  # 🔴 چک حیاتی: آیا همه AUها yield دارن؟
-  if (!all(unique(dt$AU) %in% names(sim$hanzlikPars))) {
-    stop("Some AU values do not match yieldTables!")
-  }
-  # 🔹 3. محاسبه AAC برای هر AU
-  AAC_by_AU <- dt[, .(
-    AAC = {
-      pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
-      ages <- pmin(pmax(age, 1), length(pars$hVec))
-      sum(pars$hVec[ages])
+  # =========================================================
+  # Hanzlik calculation function
+  # =========================================================
+  calcHanzlik <- function(ytM, sim){
+    
+    # If yield table is a matrix, take the last column (assumed volume)
+    if (is.matrix(ytM)){
+      idx <- dim(ytM)[2]
+      yt <- ytM[, idx]
+      
+      # If already numeric vector, use as is
+    } else if (is.numeric(ytM)){
+      yt = ytM
+      
+    } else {
+      stop("illegal yield table: matrix expected")
     }
-  ), by = AU]
+    
+    # Number of age classes
+    n <- length(yt)
+    
+    # Mean annual increment (MAI)
+    vt <- yt / 1:n
+    
+    # Rotation age (R): age at maximum MAI
+    R <- order(vt, decreasing = TRUE)[1]
+    
+    # Increment (annual volume growth)
+    inc <- c(0, diff(yt))
+    
+    # Contribution of each age class after rotation
+    # (based on Hanzlik sustained yield formulation)
+    tmp <- yt[R:n] / (P(sim)$rotationPeriodMultiplier * R)
+    
+    # Combine:
+    # - early ages use increment
+    # - older ages use normalized volume contribution
+    tmp <- c(inc[1:R-1], tmp)
+    
+    # Return parameters:
+    # R = rotation age
+    # I = increment vector
+    # hVec = contribution vector used in AAC calculation
+    return(list(R = R, I = inc, hVec = tmp))
+  }
   
-  # 🔹 4. مساحت هر پیکسل (ha)
-  cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
   
-  # 🔹 5. AAC کل
-  totalAAC <- sum(AAC_by_AU$AAC) * cellArea_ha  
-  # 🔹 6. ذخیره
-  sim$AAC <- totalAAC
+  # =========================================================
+  # Initialization function
+  # =========================================================
+  Init <- function(sim) {
+    
+    # Compute Hanzlik parameters for each yield table
+    sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim)
+    
+    # 🔥 IMPORTANT:
+    # Ensure names match analysisUnit IDs exactly
+    names(sim$hanzlikPars) <- names(sim$yieldTables)
+    
+    return(invisible(sim))
+  }
   
-  message(sprintf(
-    "Year %d | AAC = %.2f m3/year",
-    time(sim), totalAAC
-  ))
   
-  return(invisible(sim))
-}
+  # =========================================================
+  # Plan function (AAC calculation)
+  # =========================================================
+  Plan <- function(sim) {
+    
+    # -------------------------------------------------------
+    # 1. Extract Analysis Unit (AU) and stand age values
+    # -------------------------------------------------------
+    AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
+    ageVals <- as.vector(terra::values(sim$standAgeMap))
+    
+    dt <- data.table(
+      AU  = AUvals,
+      age = ageVals
+    )
+    
+    # Remove missing values
+    dt <- dt[!is.na(AU) & !is.na(age)]
+    
+    # -------------------------------------------------------
+    # 2. Prepare data
+    # -------------------------------------------------------
+    
+    # Convert age to integer (required for indexing)
+    dt[, age := floor(age)]
+    
+    # 🔴 CRITICAL CHECK:
+    # Ensure every AU has a corresponding yield table
+    if (!all(unique(dt$AU) %in% names(sim$hanzlikPars))) {
+      stop("Some AU values do not match yieldTables!")
+    }
+    
+    # -------------------------------------------------------
+    # 3. Compute AAC per Analysis Unit
+    # -------------------------------------------------------
+    AAC_by_AU <- dt[, .(
+      AAC = {
+        
+        # Retrieve Hanzlik parameters for this AU
+        pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
+        
+        # Clamp ages to valid range of hVec
+        ages <- pmin(pmax(age, 1), length(pars$hVec))
+        
+        # Sum contributions across pixels
+        sum(pars$hVec[ages])
+      }
+    ), by = AU]
+    
+    # -------------------------------------------------------
+    # 4. Compute cell area (hectares)
+    # -------------------------------------------------------
+    cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
+    
+    # -------------------------------------------------------
+    # 5. Total AAC (m3/year)
+    # -------------------------------------------------------
+    totalAAC <- sum(AAC_by_AU$AAC) * cellArea_ha
+    
+    # -------------------------------------------------------
+    # 6. Store result in sim object
+    # -------------------------------------------------------
+    sim$AAC <- totalAAC
+    
+    # Print result
+    message(sprintf(
+      "Year %d | AAC = %.2f m3/year",
+      time(sim), totalAAC
+    ))
+    
+    return(invisible(sim))
+  }
 
-
+# =========================================================
+# .inputObjects function
+# Responsible for ensuring all required inputs exist in sim
+# If not provided, creates fallback (test) data
+# =========================================================
 .inputObjects <- function(sim) {
   
+  # -------------------------------------------------------
+  # Resolve data path for module inputs
+  # -------------------------------------------------------
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
   
@@ -163,12 +225,14 @@ Plan <- function(sim) {
   # analysisUnitMap
   # =========================================================
   
+  # Check if analysisUnitMap is already provided and valid
   if (!is.null(sim$analysisUnitMap) && inherits(sim$analysisUnitMap, "SpatRaster")) {
     
     message("Using supplied analysisUnitMap")
     
   } else {
     
+    # Create a small dummy raster for testing
     message("Creating fake analysisUnitMap...")
     
     analysisUnitMap <- terra::rast(
@@ -177,20 +241,24 @@ Plan <- function(sim) {
       ymin = 0, ymax = 1000
     )
     
+    # Assign random AU IDs (1–3)
     terra::values(analysisUnitMap) <- sample(1:3, 100, replace = TRUE)
     
     sim$analysisUnitMap <- analysisUnitMap
   }
+  
   # =========================================================
   # standAgeMap
   # =========================================================
   
+  # Check if standAgeMap is already provided
   if (!is.null(sim$standAgeMap)) {
     
     message("Using supplied standAgeMap")
     
   } else {
     
+    # Create a dummy stand age raster
     message("Creating fake standAgeMap...")
     
     standAgeMap <- terra::rast(
@@ -199,6 +267,7 @@ Plan <- function(sim) {
       ymin = 0, ymax = 1000
     )
     
+    # Assign random stand ages (1–80 years)
     terra::values(standAgeMap) <- sample(1:80, 100, replace = TRUE)
     
     sim$standAgeMap <- standAgeMap
@@ -208,10 +277,7 @@ Plan <- function(sim) {
   # yieldTables
   # =========================================================
   
-  # =========================================================
-  # yieldTables
-  # =========================================================
-  
+  # If yieldTables already exist in sim, use them
   if ("yieldTables" %in% names(sim)) {
     
     message("Using supplied yieldTables")
@@ -220,48 +286,65 @@ Plan <- function(sim) {
     
     message("No yieldTables supplied → building internally")
     
-    # 🔹 اول AU ها رو از map بگیر
+    # -------------------------------------------------------
+    # Extract unique Analysis Unit IDs from raster
+    # -------------------------------------------------------
     AUvals <- unique(terra::values(sim$analysisUnitMap))
     AUvals <- AUvals[!is.na(AUvals)]
     
-    # 🔹 تلاش برای خواندن فایل واقعی
+    # -------------------------------------------------------
+    # Attempt to read real .yld file
+    # -------------------------------------------------------
     yldFile <- file.path(dPath, "NL/YTF/BarNS_sub_all.yld")
     
     if (file.exists(yldFile)) {
       
       message("Reading real .yld file...")
       
+      # Read raw file lines
       lines <- readLines(yldFile)
+      
+      # Locate header line containing "Age"
       start <- grep("Age", lines)[1]
       
+      # Read table from file (after header)
       tab <- read.table(
-        text = lines[(start+1):length(lines)],
+        text = lines[(start + 1):length(lines)],
         header = FALSE,
         fill = TRUE
       )
       
+      # Assign column names (based on NL yield table structure)
       colnames(tab) <- c("Age", "BSv", "WSv", "BFv", "WPv", "TLv", "YBv")
       
+      # Select one yield curve (e.g., black spruce volume)
       yt <- tab$BSv
       
+      # Interpolate yield curve to annual resolution (1–100 years)
       yt_interp <- approx(
         x = tab$Age,
         y = yt,
         xout = 1:100
       )$y
       
+      # Replace NA values (from interpolation gaps) with zero
       yt_interp[is.na(yt_interp)] <- 0
       
       message("Using .yld-based yield curve")
       
     } else {
       
+      # Fallback: create synthetic yield curve
       message("No .yld file found → using fake yield curve")
       
       yt_interp <- cumsum(seq(1, 3, length.out = 100))
     }
     
-    # 🔹 برای هر AU یک curve بساز (خیلی مهم)
+    # -------------------------------------------------------
+    # Build yield table list for each AU
+    # -------------------------------------------------------
+    # IMPORTANT:
+    # Each Analysis Unit must have its own yield curve entry
     sim$yieldTables <- setNames(
       replicate(length(AUvals), yt_interp, simplify = FALSE),
       as.character(AUvals)
