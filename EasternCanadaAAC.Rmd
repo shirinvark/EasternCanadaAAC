@@ -19,90 +19,136 @@ always_allow_html: true
 
 # EasternCanadaAAC Module
 
-<!-- the following are text references used in captions for LaTeX compatibility -->
 (ref:EasternCanadaAAC) *EasternCanadaAAC*
 
-```{r setup-EasternCanadaAAC, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, eval = FALSE, results = "hold") ## change to eval = TRUE if all chunks are to be evaluated
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
 
 dir.create("figures", showWarnings = FALSE)
-
-download.file(url = "https://img.shields.io/badge/Made%20with-Markdown-1f425f.png",
-              destfile = "figures/markdownBadge.png",
-              mode = "wb")
 ```
 
-[![made-with-Markdown](figures/markdownBadge.png)](https://commonmark.org)
+---
 
-<!-- if knitting to pdf remember to add the pandoc_args: ["--extract-media", "."] option to yml in order to get the badge images -->
+## Authors
 
-#### Authors:
+```{r}
+paste(as.character(SpaDES.core::moduleMetadata(
+  module = "EasternCanadaAAC",
+  path = ".."
+)$authors), collapse = ", ")
+```
 
-`r paste(as.character(SpaDES.core::moduleMetadata(module = "EasternCanadaAAC", path = '..')$authors), sep = ', ')`
-<!-- ideally separate authors with new lines, '\n' not working -->
+---
 
 ## Module Overview
 
-### Module summary
+### Summary
 
-Provide a brief summary of what the module does / how to use the module.
+The **EasternCanadaAAC** module calculates the Annual Allowable Cut (AAC) using a simplified Hanzlik method.
 
-Module documentation should be written so that others can use your module.
-This is a template for module documentation, and should be changed to reflect your module.
+It:
+- Uses yield tables and stand age distribution
+- Computes optimal rotation age
+- Estimates sustainable harvest volume
+- Supports dynamic replanning
 
-### Module inputs and parameters
+👉 *“This module translates forest structure into a sustainable harvest level.”*
 
-Describe input data required by the module and how to obtain it (e.g., directly from online sources or supplied by other modules)
-If `sourceURL` is specified, `downloadData("EasternCanadaAAC", "E:/EasternCanadaAAC")` may be sufficient.
+---
 
-Table \@ref(tab:moduleInputs-EasternCanadaAAC) shows the full list of module inputs.
+## Module Inputs
 
-```{r moduleInputs-EasternCanadaAAC, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_inputs <- SpaDES.core::moduleInputs("EasternCanadaAAC", "E:/EasternCanadaAAC")
+```{r}
+df_inputs <- SpaDES.core::moduleInputs("EasternCanadaAAC", path = "..")
 knitr::kable(df_inputs,
-             caption = "List of (ref:EasternCanadaAAC) input objects and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
+             caption = "Module input objects.")
 ```
 
-Summary of user-visible parameters (Table \@ref(tab:moduleParams-EasternCanadaAAC))
+---
 
+## Parameters
 
-```{r moduleParams-EasternCanadaAAC, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_params <- SpaDES.core::moduleParams("EasternCanadaAAC", "E:/EasternCanadaAAC")
-knitr::kable(df_params, caption = "List of (ref:EasternCanadaAAC) parameters and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
+```{r}
+df_params <- SpaDES.core::moduleParams("EasternCanadaAAC", path = "..")
+knitr::kable(df_params,
+             caption = "Module parameters.")
 ```
 
-### Events
+---
 
-Describe what happens for each event type.
+## Module Outputs
 
-### Plotting
-
-Write what is plotted.
-
-### Saving
-
-Write what is saved.
-
-### Module outputs
-
-Description of the module outputs (Table \@ref(tab:moduleOutputs-EasternCanadaAAC)).
-
-```{r moduleOutputs-EasternCanadaAAC, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_outputs <- SpaDES.core::moduleOutputs("EasternCanadaAAC", "E:/EasternCanadaAAC")
-knitr::kable(df_outputs, caption = "List of (ref:EasternCanadaAAC) outputs and their description.") |>
-  kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
+```{r}
+df_outputs <- SpaDES.core::moduleOutputs("EasternCanadaAAC", path = "..")
+knitr::kable(df_outputs,
+             caption = "Module outputs.")
 ```
 
-### Links to other modules
+---
 
-Describe any anticipated linkages to other modules, such as modules that supply input data or do post-hoc analysis.
+## Events
 
-### Getting help
+- **init**  
+  - Computes Hanzlik parameters from yield tables  
 
--   provide a way for people to obtain help (e.g., module repository issues page)
+- **plan**  
+  - Calculates AAC  
+  - Repeats every `replanInterval` years  
+
+---
+
+## Example Run (Standalone)
+
+```{r}
+library(SpaDES.core)
+
+sim <- simInit(
+  times   = list(start = 0, end = 1),
+  modules = "EasternCanadaAAC",
+  paths   = list(modulePath = ".."),
+  options = list(
+    spades.checkpoint = FALSE,
+    spades.save       = FALSE,
+    spades.progress   = FALSE
+  )
+)
+
+sim <- spades(sim)
+
+sim$AAC
+```
+
+---
+
+## Notes
+
+- If no input data are supplied:
+  - The module generates internal test data  
+- If yield files are available:
+  - They are automatically used  
+- If inputs are supplied externally:
+  - They override internal generation  
+
+---
+
+## Links to Other Modules
+
+This module is designed to integrate with:
+
+- A classifier module providing `analysisUnitMap`
+- Data preparation modules providing yield tables and stand age
+
+---
+
+## Getting Help
+
+For issues or questions:
+- Use the GitHub repository issues page
+
+---
 
 ## References
-
-<!-- autogenerated from bibligraphy -->
