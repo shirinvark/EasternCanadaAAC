@@ -42,6 +42,8 @@ defineModule(sim, list(
       
       expectsInput("analysisUnitMap", "SpatRaster",
                    "Map of analysis units per pixel"),
+      expectsInput("pixelGroupMap", "SpatRaster", "Pixel groups"),
+      expectsInput("pixelAreaDT", "data.table", "Effective area"),
       
       expectsInput("standAgeMap", "SpatRaster",
                    "Stand age per pixel"),
@@ -51,7 +53,9 @@ defineModule(sim, list(
   ),
     outputObjects = bindrows(
   createsOutput("AAC", "numeric",
-                "Annual Allowable Cut (m3/year)")
+                "Annual Allowable Cut (m3/year)"),
+  createsOutput("AAC_by_AU", "data.table", "AAC per AU"),
+  createsOutput("hanzlikPars", "list", "Hanzlik parameters")
 
 ))
 )
@@ -189,28 +193,31 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
         # Retrieve Hanzlik parameters for this AU
         pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
         
-        # Clamp ages to valid range of hVec
-      #  ages <- pmin(pmax(age, 1), length(pars$hVec))
-        
-        # Sum contributions across pixels
-        #sum(pars$hVec[ages])
         R <- pars$R
         message("AU: ", .BY$AU, " | Rotation age: ", R)
+        
+        # Clamp ages to valid range
         ages <- pmin(pmax(age, 1), length(pars$V))
-        ages <- as.integer(ages)        
-        # ساده‌ترین حالت بدون area
+        ages <- as.integer(ages)
+        
+        # Mature vs Immature
         mature_idx   <- ages >= R
         immature_idx <- ages < R
         
+        # Check area exists
         if (!"effectiveArea" %in% names(.SD)) {
           stop("❌ effectiveArea missing — classifier not connected properly")
         }
         
-        a <- effectiveArea        
+        a <- effectiveArea
+        
+        # Compute components
         V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
         I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
         
-        AAC <- (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
+        # 🔥 RETURN (مهم‌ترین خط)
+        (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
+        
       }
     ), by = AU]
     
