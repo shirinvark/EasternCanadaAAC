@@ -406,9 +406,11 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       # Fallback: create synthetic yield curve
       message("No .yld file found → using fake yield curve")
       
+
       ages <- 1:100
       
-      yt_interp <- 300 * (1 - exp(-0.05 * ages))
+      yt_interp <- 0.05 * ages^2 * exp(-0.03 * ages)
+      yt_interp <- yt_interp / max(yt_interp) * 300  # scale
       # realistic growth curve  
       }
     
