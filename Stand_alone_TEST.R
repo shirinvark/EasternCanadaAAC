@@ -35,7 +35,7 @@ sim <- simInit(
 # -----------------------------
 # 2️⃣ بعد تغییر بده
 # -----------------------------
-terra::values(sim$standAgeMap) <- 5
+#terra::values(sim$standAgeMap) <- 5
 terra::values(sim$standAgeMap) <- 80
 
 # -----------------------------

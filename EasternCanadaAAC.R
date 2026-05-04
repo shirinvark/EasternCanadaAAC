@@ -6,8 +6,8 @@
 ## If exact location is required, functions will be: `sim$.mods$<moduleName>$FunctionName`.
 defineModule(sim, list(
   name = "EasternCanadaAAC",
-  description = "",
-  keywords = "",
+  description = "Compute Annual Allowable Cut (AAC) using Hanzlik method",
+  keywords = c("AAC", "Hanzlik", "forest management", "SpaDES"),
   authors = structure(list(list(given = c("First", "Middle"), family = "Last", role = c("aut", "cre"), email = "email@example.com", comment = NULL)), class = "person"),
   childModules = character(0),
   version = list(EasternCanadaAAC = "0.0.0.9000"),
@@ -76,9 +76,18 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   return(invisible(sim))
 }
 
-  # =========================================================
-  # Hanzlik calculation function
-  # =========================================================
+ 
+# =========================================================
+# Hanzlik parameter calculation
+# ---------------------------------------------------------
+# Converts a yield table into:
+# - annual volume (V)
+# - increment (I)
+# - rotation age (R) based on maximum MAI
+#
+# This function prepares all parameters required for
+# AAC calculation following the Hanzlik method.
+# =========================================================  
   calcHanzlik <- function(ytM, sim){
     
     # If yield table is a matrix, take the last column (assumed volume)
@@ -98,6 +107,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     n <- length(yt)
     
     # Mean annual increment (MAI)
+    # MAI = V(t) / t (Mean Annual Increment)
     vt <- yt / 1:n
     
     # Rotation age (R): age at maximum MAI
@@ -106,8 +116,8 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     # Increment (annual volume growth)
     inc <- c(0, diff(yt))
     
-    # Contribution of each age class after rotation
-    # (based on Hanzlik sustained yield formulation)
+    # Normalize mature volume by rotation period
+    # This distributes harvestable volume over time
     tmp <- yt[R:n] / (P(sim)$rotationPeriodMultiplier * R)
     
     # Combine:
@@ -165,8 +175,10 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       all.x = TRUE
     )
     
-    # اگر NA بود → صفر کن
-    dt[is.na(effectiveArea), effectiveArea := 0]
+    # Check for missing effective area (should not happen)
+    if (any(is.na(dt$effectiveArea))) {
+      stop("❌ NA in effectiveArea — join with pixelAreaDT failed")
+    }
     
     # Remove missing values
     dt <- dt[!is.na(AU) & !is.na(age)]
@@ -175,7 +187,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     # 2. Prepare data
     # -------------------------------------------------------
     
-    # Convert age to integer (required for indexing)
+    # Convert age to integer for indexing yield vectors
     dt[, age := floor(age)]
     
     # 🔴 CRITICAL CHECK:
@@ -184,23 +196,35 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       stop("Some AU values do not match yieldTables!")
     }
     
+    
     # -------------------------------------------------------
-    # 3. Compute AAC per Analysis Unit
+    # 3. Compute AAC per Analysis Unit (Hanzlik method)
+    # -------------------------------------------------------
+    # For each AU:
+    # - Mature stands (age >= R): contribute via standing volume
+    # - Immature stands (age < R): contribute via growth
+    #
+    # AAC = (Mature Volume / Rotation Period) + Growth
     # -------------------------------------------------------
     AAC_by_AU <- dt[, .(
       AAC = {
         
         # Retrieve Hanzlik parameters for this AU
         pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
-        
+        # Rotation age derived from maximum MAI (Mean Annual Increment)
         R <- pars$R
-        message("AU: ", .BY$AU, " | Rotation age: ", R)
-        
+        if (isTRUE(getOption("aac.debug", TRUE))) {
+          message("AU: ", .BY$AU, " | Rotation age: ", R)
+        }        
         # Clamp ages to valid range
         ages <- pmin(pmax(age, 1), length(pars$V))
         ages <- as.integer(ages)
         
-        # Mature vs Immature
+        # ----------------------------------------
+        # Split stands based on rotation age
+        # ----------------------------------------
+        # Mature stands: age >= R → available for harvest
+        # Immature stands: age < R → still growing
         mature_idx   <- ages >= R
         immature_idx <- ages < R
         
@@ -211,11 +235,26 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
         
         a <- effectiveArea
         
-        # Compute components
+        # ----------------------------------------
+        # Compute mature volume
+        # ----------------------------------------
+        # Total standing volume in stands older than rotation age
         V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
+        # ----------------------------------------
+        # Compute growth from immature stands
+        # ----------------------------------------
+        # Total annual increment from younger stands
         I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
         
-        # 🔥 RETURN (مهم‌ترین خط)
+        # ----------------------------------------
+        # Hanzlik AAC formula
+        # ----------------------------------------
+        # AAC = (Mature Volume / Rotation Period) + Growth
+        #
+        # - Mature volume is distributed over the rotation period
+        # - Growth from immature stands is added directly
+        #
+        # This ensures sustained yield over time
         (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
         
       }
@@ -234,6 +273,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     # 6. Store result in sim object
     # -------------------------------------------------------
     sim$AAC <- totalAAC
+    sim$AAC_by_AU <- AAC_by_AU
     
     # Print result
     message(sprintf(
@@ -345,8 +385,9 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     sim$pixelAreaDT <- data.table(
       pixelGroup = pg,
       #effectiveArea = cellArea_ha
-      effectiveArea = cellArea_ha * 0.5
-    )
+      # TEST ONLY: reduce effective area by 50% to test AAC sensitivity
+      effectiveArea = cellArea_ha * 0.5   
+      )
   }
   # =========================================================
   # yieldTables
