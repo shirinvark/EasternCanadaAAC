@@ -409,7 +409,8 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       ages <- 1:100
       
       yt_interp <- 300 * (1 - exp(-0.05 * ages))
-      # realistic growth curve    }
+      # realistic growth curve  
+      }
     
     # -------------------------------------------------------
     # Build yield table list for each AU
