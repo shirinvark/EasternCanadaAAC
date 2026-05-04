@@ -337,7 +337,8 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     
     sim$pixelAreaDT <- data.table(
       pixelGroup = pg,
-      effectiveArea = cellArea_ha
+      #effectiveArea = cellArea_ha
+      effectiveArea = cellArea_ha * 0.5
     )
   }
   # =========================================================
