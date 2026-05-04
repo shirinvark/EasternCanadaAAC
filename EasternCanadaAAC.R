@@ -195,7 +195,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
         # Sum contributions across pixels
         #sum(pars$hVec[ages])
         R <- pars$R
-        
+        message("AU: ", .BY$AU, " | Rotation age: ", R)
         ages <- pmin(pmax(age, 1), length(pars$V))
         ages <- as.integer(ages)        
         # ساده‌ترین حالت بدون area
