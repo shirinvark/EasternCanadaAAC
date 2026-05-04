@@ -115,8 +115,8 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     # R = rotation age
     # I = increment vector
     # hVec = contribution vector used in AAC calculation
-    return(list(R = R, I = inc, hVec = tmp))
-  }
+    return(list(R = R, I = inc, V = yt, hVec = tmp))
+    }
   
   
   # =========================================================
@@ -147,9 +147,22 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     ageVals <- as.vector(terra::values(sim$standAgeMap))
     
     dt <- data.table(
+      pixelGroup = as.vector(terra::values(sim$pixelGroupMap)),
       AU  = AUvals,
       age = ageVals
     )
+    # -------------------------------------------------------
+    # 🔥 join effective area from classifier
+    # -------------------------------------------------------
+    dt <- merge(
+      dt,
+      sim$pixelAreaDT[, .(pixelGroup, effectiveArea)],
+      by = "pixelGroup",
+      all.x = TRUE
+    )
+    
+    # اگر NA بود → صفر کن
+    dt[is.na(effectiveArea), effectiveArea := 0]
     
     # Remove missing values
     dt <- dt[!is.na(AU) & !is.na(age)]
@@ -177,23 +190,39 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
         pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
         
         # Clamp ages to valid range of hVec
-        ages <- pmin(pmax(age, 1), length(pars$hVec))
+      #  ages <- pmin(pmax(age, 1), length(pars$hVec))
         
         # Sum contributions across pixels
-        sum(pars$hVec[ages])
+        #sum(pars$hVec[ages])
+        R <- pars$R
+        
+        ages <- pmin(pmax(age, 1), length(pars$V))
+        ages <- as.integer(ages)        
+        # ساده‌ترین حالت بدون area
+        mature_idx   <- ages >= R
+        immature_idx <- ages < R
+        
+        if (!"effectiveArea" %in% names(.SD)) {
+          stop("❌ effectiveArea missing — classifier not connected properly")
+        }
+        
+        a <- effectiveArea        
+        V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
+        I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
+        
+        AAC <- (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
       }
     ), by = AU]
     
     # -------------------------------------------------------
     # 4. Compute cell area (hectares)
     # -------------------------------------------------------
-    cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
+    #cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
     
     # -------------------------------------------------------
     # 5. Total AAC (m3/year)
     # -------------------------------------------------------
-    totalAAC <- sum(AAC_by_AU$AAC) * cellArea_ha
-    
+    totalAAC <- sum(AAC_by_AU$AAC)    
     # -------------------------------------------------------
     # 6. Store result in sim object
     # -------------------------------------------------------
@@ -272,7 +301,45 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
     
     sim$standAgeMap <- standAgeMap
   }
+  # =========================================================
+  # pixelGroupMap (fallback)
+  # =========================================================
   
+  if (!is.null(sim$pixelGroupMap) && inherits(sim$pixelGroupMap, "SpatRaster")) {
+    
+    message("Using supplied pixelGroupMap")
+    
+  } else {
+    
+    message("Creating fake pixelGroupMap...")
+    
+    r <- sim$analysisUnitMap
+    
+    terra::values(r) <- 1:terra::ncell(r)
+    
+    sim$pixelGroupMap <- r
+  }
+  # =========================================================
+  # pixelAreaDT (fallback)
+  # =========================================================
+  
+  if (!is.null(sim$pixelAreaDT)) {
+    
+    message("Using supplied pixelAreaDT")
+    
+  } else {
+    
+    message("Creating fake pixelAreaDT...")
+    
+    cellArea_ha <- prod(terra::res(sim$analysisUnitMap)) / 10000
+    
+    pg <- as.vector(terra::values(sim$pixelGroupMap))
+    
+    sim$pixelAreaDT <- data.table(
+      pixelGroup = pg,
+      effectiveArea = cellArea_ha
+    )
+  }
   # =========================================================
   # yieldTables
   # =========================================================
@@ -285,6 +352,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   } else {
     
     message("No yieldTables supplied → building internally")
+    
     
     # -------------------------------------------------------
     # Extract unique Analysis Unit IDs from raster
