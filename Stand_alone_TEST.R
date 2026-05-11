@@ -35,8 +35,8 @@ sim <- simInit(
 # -----------------------------
 # 2️⃣ بعد تغییر بده
 # -----------------------------
-#terra::values(sim$standAgeMap) <- 5
-terra::values(sim$standAgeMap) <- 80
+terra::values(sim$standAgeMap) <- 5
+#terra::values(sim$standAgeMap) <- 80
 
 # -----------------------------
 # 3️⃣ اجرا
@@ -44,3 +44,4 @@ terra::values(sim$standAgeMap) <- 80
 sim <- spades(sim)
 
 sim$AAC
+
