@@ -1,0 +1,2 @@
+"file" "checksum" "filesize" "algorithm"
+"SCANFI_att_age_S_2020_v1_1.tif" "607125f3c3abe245" "5953318556" "xxhash64"

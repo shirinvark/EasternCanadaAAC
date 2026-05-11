@@ -3,3 +3,7 @@
 .RData
 .Ruserdata
 .positai
+cache/
+scratch/
+*.html
+*.md
