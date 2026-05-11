@@ -514,7 +514,8 @@ Plan <- function(sim) {
     # -------------------------------------------------------
     # IMPORTANT:
     # Each Analysis Unit must have its own yield curve entry
-    if (!is.null(sim$AUtoCurve)) {
+    if (!is.null(sim$AUtoCurve) &&
+        inherits(sim$AUtoCurve, "data.table"))  {
       
       message("Using supplied AUtoCurve")
       
