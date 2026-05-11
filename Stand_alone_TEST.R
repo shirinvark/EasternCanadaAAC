@@ -16,15 +16,23 @@ setPaths(
 SpaDES.project::getModule(
   modules    = "shirinvark/EasternCanadaAAC",
   modulePath = getPaths()$modulePath,
-  overwrite  = FALSE
+  overwrite  = TRUE
 )
 
 # -----------------------------
-# 1️⃣ اول sim رو بساز
+# 1️⃣ Build sim
 # -----------------------------
 sim <- simInit(
   times   = list(start = 0, end = 1),
   modules = "EasternCanadaAAC",
+  
+  params = list(
+    EasternCanadaAAC = list(
+      #jurisdiction = "NL",
+      rotationPeriodShift = 0
+    )
+  ),
+  
   options = list(
     spades.checkpoint = FALSE,
     spades.save       = FALSE,
@@ -33,15 +41,16 @@ sim <- simInit(
 )
 
 # -----------------------------
-# 2️⃣ بعد تغییر بده
+# 2️⃣ Force young forest
 # -----------------------------
 terra::values(sim$standAgeMap) <- 5
-#terra::values(sim$standAgeMap) <- 80
 
 # -----------------------------
-# 3️⃣ اجرا
+# 3️⃣ Run
 # -----------------------------
 sim <- spades(sim)
 
+# -----------------------------
+# 4️⃣ AAC result
+# -----------------------------
 sim$AAC
-
