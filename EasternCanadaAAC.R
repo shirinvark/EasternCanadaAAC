@@ -47,9 +47,6 @@ defineModule(sim, list(
       
       expectsInput("standAgeMap", "SpatRaster",
                    "Stand age per pixel"),
-      
-      expectsInput("yieldTables", "list",
-                   "Yield tables per AU")
   ),
     outputObjects = bindrows(
   createsOutput("AAC", "numeric",
@@ -76,7 +73,387 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   return(invisible(sim))
 }
 
- 
+
+
+
+
+# =========================================================
+# NEWFOUNDLAND PARSER
+# =========================================================
+
+parseNL <- function(sim,
+                    maxAge = 205) {
+  
+  library(data.table)
+  
+  message("Preparing Newfoundland yield tables...")
+  
+  # =======================================================
+  # curves selected by classifier
+  # =======================================================
+  
+  curves_needed <- unique(
+    sim$analysisUnitDT$bestCurve
+  )
+  
+  curves_needed <- curves_needed[!is.na(curves_needed)]
+  
+  # =======================================================
+  # output
+  # =======================================================
+  
+  yieldTables <- list()
+  
+  # =======================================================
+  # loop over curves
+  # =======================================================
+  
+  for (curve_name in curves_needed) {
+    
+    message("Processing: ", curve_name)
+    
+    # ---------------------------------------------------
+    # file path
+    # ---------------------------------------------------
+    
+    yld_path <- file.path(
+      "data/NL/YTF",
+      paste0(curve_name, ".yld")
+    )
+    
+    if (!file.exists(yld_path)) {
+      warning("Missing: ", yld_path)
+      next
+    }
+    
+    # ---------------------------------------------------
+    # read file
+    # ---------------------------------------------------
+    
+    lines <- readLines(yld_path)
+    
+    # ---------------------------------------------------
+    # parse species rows
+    # ---------------------------------------------------
+    
+    species_vectors <- list()
+    
+    i <- 1
+    
+    while (i <= length(lines)) {
+      
+      line <- lines[i]
+      
+      if (grepl(
+        "^[[:space:]]+[A-Za-z]{2,3}v",
+        line
+      )) {
+        
+        combined <- trimws(line)
+        
+        j <- i + 1
+        
+        # continuation lines
+        while (
+          j <= length(lines) &&
+          grepl(
+            "^[[:space:]]+[0-9]",
+            lines[j]
+          )
+        ) {
+          
+          combined <- paste(
+            combined,
+            trimws(lines[j])
+          )
+          
+          j <- j + 1
+        }
+        
+        vals <- strsplit(
+          combined,
+          "\\s+"
+        )[[1]]
+        
+        vals <- vals[vals != ""]
+        
+        if (length(vals) > 5) {
+          
+          sp <- vals[1]
+          
+          y <- suppressWarnings(
+            as.numeric(vals[-c(1,2)])
+          )
+          
+          y <- y[!is.na(y)]
+          
+          species_vectors[[sp]] <- y
+        }
+        
+        i <- j
+        
+      } else {
+        
+        i <- i + 1
+      }
+    }
+    
+    # ---------------------------------------------------
+    # equalize lengths
+    # ---------------------------------------------------
+    
+    min_len <- min(
+      sapply(species_vectors, length)
+    )
+    
+    species_vectors <- lapply(
+      species_vectors,
+      function(x) x[1:min_len]
+    )
+    
+    # ---------------------------------------------------
+    # total volume
+    # ---------------------------------------------------
+    
+    total_volume <- Reduce(
+      "+",
+      species_vectors
+    )
+    
+    # ---------------------------------------------------
+    # ages
+    # ---------------------------------------------------
+    
+    ages <- seq(
+      0,
+      by = 5,
+      length.out = length(total_volume)
+    )
+    
+    # ---------------------------------------------------
+    # annual interpolation
+    # ---------------------------------------------------
+    
+    annual <- approx(
+      x = ages,
+      y = total_volume,
+      xout = 1:maxAge,
+      method = "linear",
+      rule = 2
+    )$y
+    
+    annual[annual < 0] <- 0
+    
+    # ---------------------------------------------------
+    # save
+    # ---------------------------------------------------
+    
+    yieldTables[[curve_name]] <- data.table(
+      age = 1:maxAge,
+      volume = annual
+    )
+  }
+  
+  return(yieldTables)
+}
+
+
+# =========================================================
+# ONTARIO PARSER
+# =========================================================
+
+parseON <- function(sim,
+                    maxAge = 255) {
+  
+  library(data.table)
+  
+  message("Preparing Ontario yield tables...")
+  
+  # =======================================================
+  # curves selected by classifier
+  # =======================================================
+  
+  curves_needed <- unique(
+    sim$AUtoCurve$curveID
+  )
+  
+  curves_needed <- curves_needed[
+    !is.na(curves_needed)
+  ]
+  
+  # =======================================================
+  # Ontario YTF files
+  # =======================================================
+  
+  ytf_files <- list.files(
+    "data/ON/YTF",
+    pattern = "tbl_yield_final",
+    full.names = TRUE
+  )
+  
+  # =======================================================
+  # species columns
+  # =======================================================
+  
+  species_cols <- c(
+    "PW","PR","PJ",
+    "SB","SW","BF",
+    "CE","OC","HE",
+    "PO","PB",
+    "BW","MH","QR",
+    "YB","OH"
+  )
+  
+  # =======================================================
+  # output object
+  # =======================================================
+  
+  yieldTables <- list()
+  
+  # =======================================================
+  # loop over curves
+  # =======================================================
+  
+  for (curve_id in curves_needed) {
+    
+    message("Processing curve: ", curve_id)
+    
+    curve_found <- FALSE
+    
+    # ---------------------------------------------------
+    # search all YTF files
+    # ---------------------------------------------------
+    
+    for (f in ytf_files) {
+      
+      message("Checking file: ", basename(f))
+      
+      yt <- fread(f)
+      
+      # -------------------------------------------------
+      # skip if curve absent
+      # -------------------------------------------------
+      
+      if (!(curve_id %in% yt$CURVENO)) {
+        next
+      }
+      
+      curve_found <- TRUE
+      
+      # -------------------------------------------------
+      # extract curve
+      # -------------------------------------------------
+      
+      curve_dt <- yt[
+        CURVENO == curve_id
+      ]
+      
+      # -------------------------------------------------
+      # sort by age
+      # -------------------------------------------------
+      
+      setorder(curve_dt, AC10)
+      
+      # -------------------------------------------------
+      # total volume
+      # -------------------------------------------------
+      
+      curve_dt[, total_volume := rowSums(
+        .SD,
+        na.rm = TRUE
+      ), .SDcols = species_cols]
+      
+      # -------------------------------------------------
+      # annual interpolation
+      # -------------------------------------------------
+      
+      annual <- approx(
+        x = curve_dt$AC10,
+        y = curve_dt$total_volume,
+        xout = 1:maxAge,
+        method = "linear",
+        rule = 2
+      )$y
+      
+      annual[annual < 0] <- 0
+      
+      # -------------------------------------------------
+      # save standardized curve
+      # -------------------------------------------------
+      
+      yieldTables[[as.character(curve_id)]] <- data.table(
+        age = 1:maxAge,
+        volume = annual
+      )
+      
+      # -------------------------------------------------
+      # curve found → stop searching
+      # -------------------------------------------------
+      
+      break
+    }
+    
+    # ---------------------------------------------------
+    # warning if missing
+    # ---------------------------------------------------
+    
+    if (!curve_found) {
+      
+      warning(
+        "Curve not found in Ontario YTF files: ",
+        curve_id
+      )
+    }
+  }
+  
+  return(yieldTables)
+}
+
+
+# =========================================================
+# WRAPPER
+# =========================================================
+
+prepareYieldTables <- function(sim,
+                               maxAge = 255) {
+  
+  jur <- toupper(
+    P(sim)$jurisdiction
+  )
+  
+  if (jur == "NL") {
+    return(parseNL(sim, maxAge))
+  }
+  
+  if (jur == "ON") {
+    return(parseON(sim, maxAge))
+  }
+  
+  stop(
+    "Unsupported jurisdiction: ",
+    jur
+  )
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # =========================================================
 # Hanzlik parameter calculation
 # ---------------------------------------------------------
@@ -88,201 +465,225 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
 # This function prepares all parameters required for
 # AAC calculation following the Hanzlik method.
 # =========================================================  
-  calcHanzlik <- function(ytM, sim){
-    
-    # If yield table is a matrix, take the last column (assumed volume)
-    if (is.matrix(ytM)){
-      idx <- dim(ytM)[2]
-      yt <- ytM[, idx]
-      
-      # If already numeric vector, use as is
-    } else if (is.numeric(ytM)){
-      yt = ytM
-      
-    } else {
-      stop("illegal yield table: matrix expected")
-    }
-    
-    # Number of age classes
-    n <- length(yt)
-    
-    # Mean annual increment (MAI)
-    # MAI = V(t) / t (Mean Annual Increment)
-    vt <- yt / 1:n
-    
-    # Rotation age (R): age at maximum MAI
-    R <- order(vt, decreasing = TRUE)[1]
-    
-    # Increment (annual volume growth)
-    inc <- c(0, diff(yt))
-    
-    # Normalize mature volume by rotation period
-    # This distributes harvestable volume over time
-    tmp <- yt[R:n] / (P(sim)$rotationPeriodMultiplier * R)
-    
-    # Combine:
-    # - early ages use increment
-    # - older ages use normalized volume contribution
-    tmp <- c(inc[1:R-1], tmp)
-    
-    # Return parameters:
-    # R = rotation age
-    # I = increment vector
-    # hVec = contribution vector used in AAC calculation
-    return(list(R = R, I = inc, V = yt, hVec = tmp))
-    }
+calcHanzlik <- function(ytM, sim){
   
+  # If yield table is a matrix, take the last column (assumed volume)
+  if (is.matrix(ytM)){
+    idx <- dim(ytM)[2]
+    yt <- ytM[, idx]
+    
+    # If already numeric vector, use as is
+  } else if (is.numeric(ytM)){
+    yt = ytM
+    
+  } else {
+    stop("illegal yield table: matrix expected")
+  }
   
-  # =========================================================
-  # Initialization function
-  # =========================================================
-  Init <- function(sim) {
-    
-    # Compute Hanzlik parameters for each yield table
-    sim$hanzlikPars <- lapply(sim$yieldTables, calcHanzlik, sim)
-    
-    # 🔥 IMPORTANT:
-    # Ensure names match analysisUnit IDs exactly
-    names(sim$hanzlikPars) <- names(sim$yieldTables)
-    
-    return(invisible(sim))
+  # Number of age classes
+  n <- length(yt)
+  
+  # Mean annual increment (MAI)
+  # MAI = V(t) / t (Mean Annual Increment)
+  vt <- yt / 1:n
+  
+  # Rotation age (R): age at maximum MAI
+  R <- order(vt, decreasing = TRUE)[1]
+  
+  # Increment (annual volume growth)
+  inc <- c(0, diff(yt))
+  
+  # Normalize mature volume by rotation period
+  # This distributes harvestable volume over time
+  tmp <- yt[R:n] / (P(sim)$rotationPeriodMultiplier * R)
+  
+  # Combine:
+  # - early ages use increment
+  # - older ages use normalized volume contribution
+  tmp <- c(inc[1:R-1], tmp)
+  
+  # Return parameters:
+  # R = rotation age
+  # I = increment vector
+  # hVec = contribution vector used in AAC calculation
+  return(list(R = R, I = inc, V = yt, hVec = tmp))
+}
+
+
+# =========================================================
+# Initialization function
+# =========================================================
+Init <- function(sim) {
+  
+  # =====================================================
+  # Prepare annual yield curves
+  # =====================================================
+  
+  sim$yieldTables <- prepareYieldTables(sim)
+  
+  # =====================================================
+  # Compute Hanzlik parameters
+  # =====================================================
+  
+  sim$hanzlikPars <- lapply(
+    sim$yieldTables,
+    function(x) {
+      calcHanzlik(
+        x$volume,
+        sim
+      )
+    }
+  )
+  
+  # =====================================================
+  # Ensure names match analysis units
+  # =====================================================
+  
+  names(sim$hanzlikPars) <- names(sim$yieldTables)
+  
+  return(invisible(sim))
+}
+
+# =========================================================
+# Plan function (AAC calculation)
+# =========================================================
+Plan <- function(sim) {
+  
+  # -------------------------------------------------------
+  # 1. Extract Analysis Unit (AU) and stand age values
+  # -------------------------------------------------------
+  AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
+  ageVals <- as.vector(terra::values(sim$standAgeMap))
+  
+  dt <- data.table(
+    pixelGroup = as.vector(terra::values(sim$pixelGroupMap)),
+    AU  = AUvals,
+    age = ageVals
+  )
+  # -------------------------------------------------------
+  # 🔥 join effective area from classifier
+  # -------------------------------------------------------
+  dt <- merge(
+    dt,
+    sim$pixelAreaDT[, .(pixelGroup, effectiveArea)],
+    by = "pixelGroup",
+    all.x = TRUE
+  )
+  
+  # Check for missing effective area (should not happen)
+  if (any(is.na(dt$effectiveArea))) {
+    stop("❌ NA in effectiveArea — join with pixelAreaDT failed")
+  }
+  
+  # Remove missing values
+  dt <- dt[!is.na(AU) & !is.na(age)]
+  
+  # -------------------------------------------------------
+  # 2. Prepare data
+  # -------------------------------------------------------
+  
+  # Convert age to integer for indexing yield vectors
+  dt[, age := floor(age)]
+  
+  # 🔴 CRITICAL CHECK:
+  # Ensure every AU has a corresponding yield table
+  curveIDs <- unique(sim$AUtoCurve$curveID)
+  
+  if (!all(curveIDs %in% names(sim$hanzlikPars))) {
+    stop("Some curveIDs do not match yieldTables!")
   }
   
   
-  # =========================================================
-  # Plan function (AAC calculation)
-  # =========================================================
-  Plan <- function(sim) {
-    
-    # -------------------------------------------------------
-    # 1. Extract Analysis Unit (AU) and stand age values
-    # -------------------------------------------------------
-    AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
-    ageVals <- as.vector(terra::values(sim$standAgeMap))
-    
-    dt <- data.table(
-      pixelGroup = as.vector(terra::values(sim$pixelGroupMap)),
-      AU  = AUvals,
-      age = ageVals
-    )
-    # -------------------------------------------------------
-    # 🔥 join effective area from classifier
-    # -------------------------------------------------------
-    dt <- merge(
-      dt,
-      sim$pixelAreaDT[, .(pixelGroup, effectiveArea)],
-      by = "pixelGroup",
-      all.x = TRUE
-    )
-    
-    # Check for missing effective area (should not happen)
-    if (any(is.na(dt$effectiveArea))) {
-      stop("❌ NA in effectiveArea — join with pixelAreaDT failed")
-    }
-    
-    # Remove missing values
-    dt <- dt[!is.na(AU) & !is.na(age)]
-    
-    # -------------------------------------------------------
-    # 2. Prepare data
-    # -------------------------------------------------------
-    
-    # Convert age to integer for indexing yield vectors
-    dt[, age := floor(age)]
-    
-    # 🔴 CRITICAL CHECK:
-    # Ensure every AU has a corresponding yield table
-    if (!all(unique(dt$AU) %in% names(sim$hanzlikPars))) {
-      stop("Some AU values do not match yieldTables!")
-    }
-    
-    
-    # -------------------------------------------------------
-    # 3. Compute AAC per Analysis Unit (Hanzlik method)
-    # -------------------------------------------------------
-    # For each AU:
-    # - Mature stands (age >= R): contribute via standing volume
-    # - Immature stands (age < R): contribute via growth
-    #
-    # AAC = (Mature Volume / Rotation Period) + Growth
-    # -------------------------------------------------------
-    AAC_by_AU <- dt[, .(
-      AAC = {
-        
-        # Retrieve Hanzlik parameters for this AU
-        pars <- sim$hanzlikPars[[as.character(.BY$AU)]]
-        # Rotation age derived from maximum MAI (Mean Annual Increment)
-        R <- pars$R
-        if (isTRUE(getOption("aac.debug", TRUE))) {
-          message("AU: ", .BY$AU, " | Rotation age: ", R)
-        }        
-        # Clamp ages to valid range
-        ages <- pmin(pmax(age, 1), length(pars$V))
-        ages <- as.integer(ages)
-        
-        # ----------------------------------------
-        # Split stands based on rotation age
-        # ----------------------------------------
-        # Mature stands: age >= R → available for harvest
-        # Immature stands: age < R → still growing
-        mature_idx   <- ages >= R
-        immature_idx <- ages < R
-        
-        # Check area exists
-        if (!"effectiveArea" %in% names(.SD)) {
-          stop("❌ effectiveArea missing — classifier not connected properly")
-        }
-        
-        a <- effectiveArea
-        
-        # ----------------------------------------
-        # Compute mature volume
-        # ----------------------------------------
-        # Total standing volume in stands older than rotation age
-        V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
-        # ----------------------------------------
-        # Compute growth from immature stands
-        # ----------------------------------------
-        # Total annual increment from younger stands
-        I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
-        
-        # ----------------------------------------
-        # Hanzlik AAC formula
-        # ----------------------------------------
-        # AAC = (Mature Volume / Rotation Period) + Growth
-        #
-        # - Mature volume is distributed over the rotation period
-        # - Growth from immature stands is added directly
-        #
-        # This ensures sustained yield over time
-        (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
-        
+  # -------------------------------------------------------
+  # 3. Compute AAC per Analysis Unit (Hanzlik method)
+  # -------------------------------------------------------
+  # For each AU:
+  # - Mature stands (age >= R): contribute via standing volume
+  # - Immature stands (age < R): contribute via growth
+  #
+  # AAC = (Mature Volume / Rotation Period) + Growth
+  # -------------------------------------------------------
+  AAC_by_AU <- dt[, .(
+    AAC = {
+      
+      # Retrieve Hanzlik parameters for this AU
+      curveID <- sim$AUtoCurve[
+        AU == .BY$AU
+      ]$curveID
+      
+      pars <- sim$hanzlikPars[[curveID]]
+      # Rotation age derived from maximum MAI (Mean Annual Increment)
+      R <- pars$R
+      if (isTRUE(getOption("aac.debug", TRUE))) {
+        message("AU: ", .BY$AU, " | Rotation age: ", R)
+      }        
+      # Clamp ages to valid range
+      ages <- pmin(pmax(age, 1), length(pars$V))
+      ages <- as.integer(ages)
+      
+      # ----------------------------------------
+      # Split stands based on rotation age
+      # ----------------------------------------
+      # Mature stands: age >= R → available for harvest
+      # Immature stands: age < R → still growing
+      mature_idx   <- ages >= R
+      immature_idx <- ages < R
+      
+      # Check area exists
+      if (!"effectiveArea" %in% names(.SD)) {
+        stop("❌ effectiveArea missing — classifier not connected properly")
       }
-    ), by = AU]
-    
-    # -------------------------------------------------------
-    # 4. Compute cell area (hectares)
-    # -------------------------------------------------------
-    #cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
-    
-    # -------------------------------------------------------
-    # 5. Total AAC (m3/year)
-    # -------------------------------------------------------
-    totalAAC <- sum(AAC_by_AU$AAC)    
-    # -------------------------------------------------------
-    # 6. Store result in sim object
-    # -------------------------------------------------------
-    sim$AAC <- totalAAC
-    sim$AAC_by_AU <- AAC_by_AU
-    
-    # Print result
-    message(sprintf(
-      "Year %d | AAC = %.2f m3/year",
-      time(sim), totalAAC
-    ))
-    
-    return(invisible(sim))
-  }
+      
+      a <- effectiveArea
+      
+      # ----------------------------------------
+      # Compute mature volume
+      # ----------------------------------------
+      # Total standing volume in stands older than rotation age
+      V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
+      # ----------------------------------------
+      # Compute growth from immature stands
+      # ----------------------------------------
+      # Total annual increment from younger stands
+      I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
+      
+      # ----------------------------------------
+      # Hanzlik AAC formula
+      # ----------------------------------------
+      # AAC = (Mature Volume / Rotation Period) + Growth
+      #
+      # - Mature volume is distributed over the rotation period
+      # - Growth from immature stands is added directly
+      #
+      # This ensures sustained yield over time
+      (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
+      
+    }
+  ), by = AU]
+  
+  # -------------------------------------------------------
+  # 4. Compute cell area (hectares)
+  # -------------------------------------------------------
+  #cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
+  
+  # -------------------------------------------------------
+  # 5. Total AAC (m3/year)
+  # -------------------------------------------------------
+  totalAAC <- sum(AAC_by_AU$AAC)    
+  # -------------------------------------------------------
+  # 6. Store result in sim object
+  # -------------------------------------------------------
+  sim$AAC <- totalAAC
+  sim$AAC_by_AU <- AAC_by_AU
+  
+  # Print result
+  message(sprintf(
+    "Year %d | AAC = %.2f m3/year",
+    time(sim), totalAAC
+  ))
+  
+  return(invisible(sim))
+}
 
 # =========================================================
 # .inputObjects function
@@ -387,7 +788,7 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       #effectiveArea = cellArea_ha
       # TEST ONLY: reduce effective area by 50% to test AAC sensitivity
       effectiveArea = cellArea_ha * 0.5   
-      )
+    )
   }
   # =========================================================
   # yieldTables
@@ -454,22 +855,27 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
       # Fallback: create synthetic yield curve
       message("No .yld file found → using fake yield curve")
       
-
+      
       ages <- 1:100
       
       yt_interp <- 0.05 * ages^2 * exp(-0.03 * ages)
       yt_interp <- yt_interp / max(yt_interp) * 300  # scale
       # realistic growth curve  
-      }
+    }
     
     # -------------------------------------------------------
     # Build yield table list for each AU
     # -------------------------------------------------------
     # IMPORTANT:
     # Each Analysis Unit must have its own yield curve entry
+    sim$AUtoCurve <- data.table(
+      AU = as.character(AUvals),
+      curveID = as.character(AUvals)
+    )
+    
     sim$yieldTables <- setNames(
       replicate(length(AUvals), yt_interp, simplify = FALSE),
-      as.character(AUvals)
+      sim$AUtoCurve$curveID
     )
   }
   

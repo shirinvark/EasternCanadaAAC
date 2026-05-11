@@ -16,7 +16,7 @@ setPaths(
 SpaDES.project::getModule(
   modules    = "shirinvark/EasternCanadaAAC",
   modulePath = getPaths()$modulePath,
-  overwrite  = TRUE
+  overwrite  = FALSE
 )
 
 # -----------------------------
