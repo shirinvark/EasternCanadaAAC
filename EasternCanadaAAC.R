@@ -30,6 +30,12 @@ defineModule(sim, list(
       default = 1,
       desc = "Multiplier for Hanzlik rotation"
     ),
+    defineParameter(
+      name = "rotationPeriodShift",
+      class = "numeric",
+      default = 0,
+      desc = "Years added to rotation age"
+    ),
     
     defineParameter(
       name = ".plots",
@@ -495,8 +501,9 @@ calcHanzlik <- function(ytM, sim){
   
   # Normalize mature volume by rotation period
   # This distributes harvestable volume over time
-  tmp <- yt[R:n] / (P(sim)$rotationPeriodMultiplier * R)
-  
+  tmp <- yt[R:n] /
+    (P(sim)$rotationPeriodMultiplier *
+       (R + P(sim)$rotationPeriodShift))  
   # Combine:
   # - early ages use increment
   # - older ages use normalized volume contribution
@@ -656,8 +663,10 @@ Plan <- function(sim) {
       # - Growth from immature stands is added directly
       #
       # This ensures sustained yield over time
-      (V_mature / (P(sim)$rotationPeriodMultiplier * R)) + I_total
-      
+      (V_mature /
+         (P(sim)$rotationPeriodMultiplier *
+            (R + P(sim)$rotationPeriodShift))) +
+        I_total      
     }
   ), by = AU]
   
@@ -873,8 +882,13 @@ Plan <- function(sim) {
       curveID = as.character(AUvals)
     )
     
+    fakeYT <- data.table(
+      age = 1:100,
+      volume = yt_interp
+    )
+    
     sim$yieldTables <- setNames(
-      replicate(length(AUvals), yt_interp, simplify = FALSE),
+      replicate(length(AUvals), fakeYT, simplify = FALSE),
       sim$AUtoCurve$curveID
     )
   }
