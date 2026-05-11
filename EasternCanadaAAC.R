@@ -526,8 +526,14 @@ Init <- function(sim) {
   # Prepare annual yield curves
   # =====================================================
   
-  sim$yieldTables <- prepareYieldTables(sim)
-  
+  if (is.null(sim$yieldTables)) {
+    
+    yt <- prepareYieldTables(sim)
+    
+    if (!is.null(yt)) {
+      sim$yieldTables <- yt
+    }
+  }  
   # =====================================================
   # Compute Hanzlik parameters
   # =====================================================
