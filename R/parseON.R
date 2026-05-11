@@ -5,7 +5,7 @@
 # =========================================================
 
 parseON <- function(sim,
-                    maxAge = 255) {
+                    maxAge = 200) {
   
   library(data.table)
   

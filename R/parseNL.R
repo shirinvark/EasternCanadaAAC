@@ -4,7 +4,7 @@
 # =========================================================
 
 parseNL <- function(sim,
-                    maxAge = 205) {
+                    maxAge = 200) {
   
   library(data.table)
   

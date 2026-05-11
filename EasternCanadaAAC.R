@@ -53,6 +53,10 @@ defineModule(sim, list(
       
       expectsInput("standAgeMap", "SpatRaster",
                    "Stand age per pixel"),
+      expectsInput("AUtoCurve", "data.table",
+                   "Mapping between analysis units and yield curves"),
+      expectsInput("yieldTables", "list",
+                   "Yield tables by curve"),
   ),
     outputObjects = bindrows(
   createsOutput("AAC", "numeric",
@@ -78,384 +82,6 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
   )
   return(invisible(sim))
 }
-
-
-
-
-
-# =========================================================
-# NEWFOUNDLAND PARSER
-# =========================================================
-
-parseNL <- function(sim,
-                    maxAge = 205) {
-  
-  library(data.table)
-  
-  message("Preparing Newfoundland yield tables...")
-  
-  # =======================================================
-  # curves selected by classifier
-  # =======================================================
-  
-  curves_needed <- unique(
-    sim$analysisUnitDT$bestCurve
-  )
-  
-  curves_needed <- curves_needed[!is.na(curves_needed)]
-  
-  # =======================================================
-  # output
-  # =======================================================
-  
-  yieldTables <- list()
-  
-  # =======================================================
-  # loop over curves
-  # =======================================================
-  
-  for (curve_name in curves_needed) {
-    
-    message("Processing: ", curve_name)
-    
-    # ---------------------------------------------------
-    # file path
-    # ---------------------------------------------------
-    
-    yld_path <- file.path(
-      "data/NL/YTF",
-      paste0(curve_name, ".yld")
-    )
-    
-    if (!file.exists(yld_path)) {
-      warning("Missing: ", yld_path)
-      next
-    }
-    
-    # ---------------------------------------------------
-    # read file
-    # ---------------------------------------------------
-    
-    lines <- readLines(yld_path)
-    
-    # ---------------------------------------------------
-    # parse species rows
-    # ---------------------------------------------------
-    
-    species_vectors <- list()
-    
-    i <- 1
-    
-    while (i <= length(lines)) {
-      
-      line <- lines[i]
-      
-      if (grepl(
-        "^[[:space:]]+[A-Za-z]{2,3}v",
-        line
-      )) {
-        
-        combined <- trimws(line)
-        
-        j <- i + 1
-        
-        # continuation lines
-        while (
-          j <= length(lines) &&
-          grepl(
-            "^[[:space:]]+[0-9]",
-            lines[j]
-          )
-        ) {
-          
-          combined <- paste(
-            combined,
-            trimws(lines[j])
-          )
-          
-          j <- j + 1
-        }
-        
-        vals <- strsplit(
-          combined,
-          "\\s+"
-        )[[1]]
-        
-        vals <- vals[vals != ""]
-        
-        if (length(vals) > 5) {
-          
-          sp <- vals[1]
-          
-          y <- suppressWarnings(
-            as.numeric(vals[-c(1,2)])
-          )
-          
-          y <- y[!is.na(y)]
-          
-          species_vectors[[sp]] <- y
-        }
-        
-        i <- j
-        
-      } else {
-        
-        i <- i + 1
-      }
-    }
-    
-    # ---------------------------------------------------
-    # equalize lengths
-    # ---------------------------------------------------
-    
-    min_len <- min(
-      sapply(species_vectors, length)
-    )
-    
-    species_vectors <- lapply(
-      species_vectors,
-      function(x) x[1:min_len]
-    )
-    
-    # ---------------------------------------------------
-    # total volume
-    # ---------------------------------------------------
-    
-    total_volume <- Reduce(
-      "+",
-      species_vectors
-    )
-    
-    # ---------------------------------------------------
-    # ages
-    # ---------------------------------------------------
-    
-    ages <- seq(
-      0,
-      by = 5,
-      length.out = length(total_volume)
-    )
-    
-    # ---------------------------------------------------
-    # annual interpolation
-    # ---------------------------------------------------
-    
-    annual <- approx(
-      x = ages,
-      y = total_volume,
-      xout = 1:maxAge,
-      method = "linear",
-      rule = 2
-    )$y
-    
-    annual[annual < 0] <- 0
-    
-    # ---------------------------------------------------
-    # save
-    # ---------------------------------------------------
-    
-    yieldTables[[curve_name]] <- data.table(
-      age = 1:maxAge,
-      volume = annual
-    )
-  }
-  
-  return(yieldTables)
-}
-
-
-# =========================================================
-# ONTARIO PARSER
-# =========================================================
-
-parseON <- function(sim,
-                    maxAge = 255) {
-  
-  library(data.table)
-  
-  message("Preparing Ontario yield tables...")
-  
-  # =======================================================
-  # curves selected by classifier
-  # =======================================================
-  
-  curves_needed <- unique(
-    sim$AUtoCurve$curveID
-  )
-  
-  curves_needed <- curves_needed[
-    !is.na(curves_needed)
-  ]
-  
-  # =======================================================
-  # Ontario YTF files
-  # =======================================================
-  
-  ytf_files <- list.files(
-    "data/ON/YTF",
-    pattern = "tbl_yield_final",
-    full.names = TRUE
-  )
-  
-  # =======================================================
-  # species columns
-  # =======================================================
-  
-  species_cols <- c(
-    "PW","PR","PJ",
-    "SB","SW","BF",
-    "CE","OC","HE",
-    "PO","PB",
-    "BW","MH","QR",
-    "YB","OH"
-  )
-  
-  # =======================================================
-  # output object
-  # =======================================================
-  
-  yieldTables <- list()
-  
-  # =======================================================
-  # loop over curves
-  # =======================================================
-  
-  for (curve_id in curves_needed) {
-    
-    message("Processing curve: ", curve_id)
-    
-    curve_found <- FALSE
-    
-    # ---------------------------------------------------
-    # search all YTF files
-    # ---------------------------------------------------
-    
-    for (f in ytf_files) {
-      
-      message("Checking file: ", basename(f))
-      
-      yt <- fread(f)
-      
-      # -------------------------------------------------
-      # skip if curve absent
-      # -------------------------------------------------
-      
-      if (!(curve_id %in% yt$CURVENO)) {
-        next
-      }
-      
-      curve_found <- TRUE
-      
-      # -------------------------------------------------
-      # extract curve
-      # -------------------------------------------------
-      
-      curve_dt <- yt[
-        CURVENO == curve_id
-      ]
-      
-      # -------------------------------------------------
-      # sort by age
-      # -------------------------------------------------
-      
-      setorder(curve_dt, AC10)
-      
-      # -------------------------------------------------
-      # total volume
-      # -------------------------------------------------
-      
-      curve_dt[, total_volume := rowSums(
-        .SD,
-        na.rm = TRUE
-      ), .SDcols = species_cols]
-      
-      # -------------------------------------------------
-      # annual interpolation
-      # -------------------------------------------------
-      
-      annual <- approx(
-        x = curve_dt$AC10,
-        y = curve_dt$total_volume,
-        xout = 1:maxAge,
-        method = "linear",
-        rule = 2
-      )$y
-      
-      annual[annual < 0] <- 0
-      
-      # -------------------------------------------------
-      # save standardized curve
-      # -------------------------------------------------
-      
-      yieldTables[[as.character(curve_id)]] <- data.table(
-        age = 1:maxAge,
-        volume = annual
-      )
-      
-      # -------------------------------------------------
-      # curve found → stop searching
-      # -------------------------------------------------
-      
-      break
-    }
-    
-    # ---------------------------------------------------
-    # warning if missing
-    # ---------------------------------------------------
-    
-    if (!curve_found) {
-      
-      warning(
-        "Curve not found in Ontario YTF files: ",
-        curve_id
-      )
-    }
-  }
-  
-  return(yieldTables)
-}
-
-
-# =========================================================
-# WRAPPER
-# =========================================================
-
-prepareYieldTables <- function(sim,
-                               maxAge = 255) {
-  
-  jur <- toupper(
-    P(sim)$jurisdiction
-  )
-  
-  if (jur == "NL") {
-    return(parseNL(sim, maxAge))
-  }
-  
-  if (jur == "ON") {
-    return(parseON(sim, maxAge))
-  }
-  
-  stop(
-    "Unsupported jurisdiction: ",
-    jur
-  )
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -744,7 +370,8 @@ Plan <- function(sim) {
   # =========================================================
   
   # Check if standAgeMap is already provided
-  if (!is.null(sim$standAgeMap)) {
+  if (!is.null(sim$standAgeMap) &&
+      inherits(sim$standAgeMap, "SpatRaster")) {
     
     message("Using supplied standAgeMap")
     
@@ -786,7 +413,8 @@ Plan <- function(sim) {
   # pixelAreaDT (fallback)
   # =========================================================
   
-  if (!is.null(sim$pixelAreaDT)) {
+  if (!is.null(sim$pixelAreaDT) &&
+      inherits(sim$pixelAreaDT, "data.table")) {
     
     message("Using supplied pixelAreaDT")
     
@@ -810,7 +438,7 @@ Plan <- function(sim) {
   # =========================================================
   
   # If yieldTables already exist in sim, use them
-  if ("yieldTables" %in% names(sim)) {
+  if (!is.null(sim$yieldTables)) {
     
     message("Using supplied yieldTables")
     
@@ -853,15 +481,12 @@ Plan <- function(sim) {
       # Select one yield curve (e.g., black spruce volume)
       yt <- tab$BSv
       
-      # Interpolate yield curve to annual resolution (1–100 years)
-      yt_interp <- approx(
-        x = tab$Age,
-        y = yt,
-        xout = 1:100
-      )$y
-      
-      # Replace NA values (from interpolation gaps) with zero
-      yt_interp[is.na(yt_interp)] <- 0
+      # Standardize yield curve to annual resolution
+      fakeYT <- standardizeYieldCurve(
+        ages = tab$Age,
+        volumes = yt,
+        maxAge = 200
+      )
       
       message("Using .yld-based yield curve")
       
@@ -874,7 +499,13 @@ Plan <- function(sim) {
       ages <- 1:100
       
       yt_interp <- 0.05 * ages^2 * exp(-0.03 * ages)
-      yt_interp <- yt_interp / max(yt_interp) * 300  # scale
+      yt_interp <- yt_interp / max(yt_interp) * 300 
+      fakeYT <- standardizeYieldCurve(
+        ages = ages,
+        volumes = yt_interp,
+        maxAge = 200
+      )
+      # scale
       # realistic growth curve  
     }
     
@@ -883,15 +514,18 @@ Plan <- function(sim) {
     # -------------------------------------------------------
     # IMPORTANT:
     # Each Analysis Unit must have its own yield curve entry
-    sim$AUtoCurve <- data.table(
-      AU = as.character(AUvals),
-      curveID = as.character(AUvals)
-    )
+    if (!is.null(sim$AUtoCurve)) {
+      
+      message("Using supplied AUtoCurve")
+      
+    } else {
+      
+      sim$AUtoCurve <- data.table(
+        AU = as.character(AUvals),
+        curveID = as.character(AUvals)
+      )
+    }
     
-    fakeYT <- data.table(
-      age = 1:100,
-      volume = yt_interp
-    )
     
     sim$yieldTables <- setNames(
       replicate(length(AUvals), fakeYT, simplify = FALSE),
