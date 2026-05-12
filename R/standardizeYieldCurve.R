@@ -7,7 +7,7 @@ standardizeYieldCurve <- function(
     volumes,
     maxAge = 200
 ){
-  
+  # assumes ages are sorted, unique, and non-missing
   annual <- approx(
     x = ages,
     y = volumes,

@@ -19,7 +19,7 @@ prepareYieldTables <- function(sim,
       "No jurisdiction supplied → using existing/fake yieldTables"
     )
     
-    return(NULL)
+    return(sim$yieldTables)
   }
   
   jur <- toupper(jur)

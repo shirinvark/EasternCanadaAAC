@@ -1,4 +1,3 @@
-
 # =========================================================
 # NEWFOUNDLAND PARSER
 # =========================================================
@@ -8,6 +7,8 @@ parseNL <- function(sim,
   
   library(data.table)
   
+  dPath <- dataPath(sim)
+  
   message("Preparing Newfoundland yield tables...")
   
   # =======================================================
@@ -15,10 +16,12 @@ parseNL <- function(sim,
   # =======================================================
   
   curves_needed <- unique(
-    sim$analysisUnitDT$bestCurve
+    sim$AUtoCurve$curveID
   )
   
-  curves_needed <- curves_needed[!is.na(curves_needed)]
+  curves_needed <- curves_needed[
+    !is.na(curves_needed)
+  ]
   
   # =======================================================
   # output
@@ -39,12 +42,22 @@ parseNL <- function(sim,
     # ---------------------------------------------------
     
     yld_path <- file.path(
-      "data/NL/YTF",
+      dPath,
+      "NL/YTF",
       paste0(curve_name, ".yld")
     )
     
+    # ---------------------------------------------------
+    # missing file
+    # ---------------------------------------------------
+    
     if (!file.exists(yld_path)) {
-      warning("Missing: ", yld_path)
+      
+      warning(
+        "Missing: ",
+        yld_path
+      )
+      
       next
     }
     
@@ -75,7 +88,10 @@ parseNL <- function(sim,
         
         j <- i + 1
         
+        # -------------------------------------------------
         # continuation lines
+        # -------------------------------------------------
+        
         while (
           j <= length(lines) &&
           grepl(
@@ -97,17 +113,27 @@ parseNL <- function(sim,
           "\\s+"
         )[[1]]
         
-        vals <- vals[vals != ""]
+        vals <- vals[
+          vals != ""
+        ]
+        
+        # -------------------------------------------------
+        # extract species volumes
+        # -------------------------------------------------
         
         if (length(vals) > 5) {
           
           sp <- vals[1]
           
           y <- suppressWarnings(
-            as.numeric(vals[-c(1,2)])
+            as.numeric(
+              vals[-c(1,2)]
+            )
           )
           
-          y <- y[!is.na(y)]
+          y <- y[
+            !is.na(y)
+          ]
           
           species_vectors[[sp]] <- y
         }
@@ -121,16 +147,35 @@ parseNL <- function(sim,
     }
     
     # ---------------------------------------------------
+    # check parsed species
+    # ---------------------------------------------------
+    
+    if (length(species_vectors) == 0) {
+      
+      warning(
+        "No species parsed from: ",
+        curve_name
+      )
+      
+      next
+    }
+    
+    # ---------------------------------------------------
     # equalize lengths
     # ---------------------------------------------------
     
     min_len <- min(
-      sapply(species_vectors, length)
+      sapply(
+        species_vectors,
+        length
+      )
     )
     
     species_vectors <- lapply(
       species_vectors,
-      function(x) x[1:min_len]
+      function(x) {
+        x[1:min_len]
+      }
     )
     
     # ---------------------------------------------------
@@ -171,4 +216,3 @@ parseNL <- function(sim,
   
   return(yieldTables)
 }
-

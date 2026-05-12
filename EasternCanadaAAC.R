@@ -97,51 +97,88 @@ doEvent.EasternCanadaAAC = function(sim, eventTime, eventType, debug = FALSE) {
 # This function prepares all parameters required for
 # AAC calculation following the Hanzlik method.
 # =========================================================  
-calcHanzlik <- function(ytM, sim){
+calcHanzlik <- function(yt, sim){
   
-  # If yield table is a matrix, take the last column (assumed volume)
-  if (is.matrix(ytM)){
-    idx <- dim(ytM)[2]
-    yt <- ytM[, idx]
-    
-    # If already numeric vector, use as is
-  } else if (is.numeric(ytM)){
-    yt = ytM
-    
-  } else {
-    stop("illegal yield table: matrix expected")
+  # -------------------------------------------------------
+  # check input
+  # -------------------------------------------------------
+  
+  if (!is.numeric(yt)) {
+    stop("Yield table must be numeric")
   }
   
-  # Number of age classes
+  # -------------------------------------------------------
+  # number of age classes
+  # -------------------------------------------------------
+  
   n <- length(yt)
   
-  # Mean annual increment (MAI)
-  # MAI = V(t) / t (Mean Annual Increment)
-  vt <- yt / 1:n
+  # -------------------------------------------------------
+  # Mean Annual Increment (MAI)
+  # -------------------------------------------------------
   
-  # Rotation age (R): age at maximum MAI
-  R <- order(vt, decreasing = TRUE)[1]
+  vt <- yt / (1:n)
   
-  # Increment (annual volume growth)
-  inc <- c(0, diff(yt))
+  # -------------------------------------------------------
+  # Rotation age (maximum MAI)
+  # -------------------------------------------------------
   
-  # Normalize mature volume by rotation period
-  # This distributes harvestable volume over time
-  tmp <- yt[R:n] /
-    (P(sim)$rotationPeriodMultiplier *
-       (R + P(sim)$rotationPeriodShift))  
-  # Combine:
-  # - early ages use increment
-  # - older ages use normalized volume contribution
-  tmp <- c(inc[1:R-1], tmp)
+  R <- which.max(vt)
   
-  # Return parameters:
-  # R = rotation age
-  # I = increment vector
-  # hVec = contribution vector used in AAC calculation
-  return(list(R = R, I = inc, V = yt, hVec = tmp))
+  # -------------------------------------------------------
+  # annual increment
+  # -------------------------------------------------------
+  
+  inc <- c(
+    0,
+    diff(yt)
+  )
+  
+  # -------------------------------------------------------
+  # mature forest contribution
+  # -------------------------------------------------------
+  
+  mature_part <- yt[R:n] /
+    (
+      P(sim)$rotationPeriodMultiplier *
+        (
+          R +
+            P(sim)$rotationPeriodShift
+        )
+    )
+  
+  # -------------------------------------------------------
+  # immature contribution
+  # -------------------------------------------------------
+  
+  young_part <- if (R > 1) {
+    inc[1:(R - 1)]
+  } else {
+    numeric(0)
+  }
+  
+  # -------------------------------------------------------
+  # Hanzlik vector
+  # -------------------------------------------------------
+  
+  hVec <- c(
+    young_part,
+    mature_part
+  )
+  
+  # -------------------------------------------------------
+  # return
+  # -------------------------------------------------------
+  
+  return(
+    list(
+      R = R,
+      I = inc,
+      V = yt,
+      hVec = hVec
+    )
+  )
 }
-
 
 # =========================================================
 # Initialization function

@@ -1,5 +1,3 @@
-
-
 # =========================================================
 # ONTARIO PARSER
 # =========================================================
@@ -9,13 +7,17 @@ parseON <- function(sim,
   
   library(data.table)
   
+  dPath <- dataPath(sim)
+  
   message("Preparing Ontario yield tables...")
   
   # =======================================================
   # curves selected by classifier
   # =======================================================
   
-  curves_needed <- c(1, 2, 3, 4)
+  curves_needed <- unique(
+    sim$AUtoCurve$curveID
+  )
   
   curves_needed <- curves_needed[
     !is.na(curves_needed)
@@ -26,7 +28,7 @@ parseON <- function(sim,
   # =======================================================
   
   ytf_files <- list.files(
-    "data/ON/YTF",
+    file.path(dPath, "ON/YTF"),
     pattern = "tbl_yield_final",
     full.names = TRUE
   )
@@ -66,7 +68,10 @@ parseON <- function(sim,
     
     for (f in ytf_files) {
       
-      message("Checking file: ", basename(f))
+      message(
+        "Checking file: ",
+        basename(f)
+      )
       
       yt <- fread(f)
       
@@ -92,16 +97,54 @@ parseON <- function(sim,
       # sort by age
       # -------------------------------------------------
       
-      setorder(curve_dt, AC10)
+      setorder(
+        curve_dt,
+        AC10
+      )
+      
+      # -------------------------------------------------
+      # available species columns only
+      # -------------------------------------------------
+      
+      spp_available <- intersect(
+        species_cols,
+        names(curve_dt)
+      )
+      
+      # -------------------------------------------------
+      # check species columns
+      # -------------------------------------------------
+      
+      if (length(spp_available) == 0) {
+        
+        warning(
+          "No species columns found for curve: ",
+          curve_id
+        )
+        
+        next
+      }
       
       # -------------------------------------------------
       # total volume
       # -------------------------------------------------
       
-      curve_dt[, total_volume := rowSums(
-        .SD,
-        na.rm = TRUE
-      ), .SDcols = species_cols]
+      curve_dt[
+        ,
+        total_volume := rowSums(
+          .SD,
+          na.rm = TRUE
+        ),
+        .SDcols = spp_available
+      ]
+      
+      # -------------------------------------------------
+      # remove NA ages
+      # -------------------------------------------------
+      
+      curve_dt <- curve_dt[
+        !is.na(AC10)
+      ]
       
       # -------------------------------------------------
       # annual interpolation
@@ -112,11 +155,14 @@ parseON <- function(sim,
         volumes = curve_dt$total_volume,
         maxAge = maxAge
       )
+      
       # -------------------------------------------------
       # save standardized curve
       # -------------------------------------------------
       
-      yieldTables[[as.character(curve_id)]] <- yt_standard
+      yieldTables[
+        [as.character(curve_id)]
+      ] <- list(yt_standard)
       
       # -------------------------------------------------
       # curve found → stop searching
@@ -140,8 +186,3 @@ parseON <- function(sim,
   
   return(yieldTables)
 }
-
-
-# =========================================================
-# WRAPPER
-# =========================================================
