@@ -159,11 +159,11 @@ parseON <- function(sim,
       # -------------------------------------------------
       # save standardized curve
       # -------------------------------------------------
+      # -------------------------------------------------
+      # save standardized curve
+      # -------------------------------------------------
       
-      yieldTables[
-        [as.character(curve_id)]
-      ] <- list(yt_standard)
-      
+      yieldTables[[as.character(curve_id)]] <- list(yt_standard)
       # -------------------------------------------------
       # curve found → stop searching
       # -------------------------------------------------
