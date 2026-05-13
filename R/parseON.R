@@ -1,30 +1,84 @@
 # =========================================================
 # ONTARIO PARSER
 # =========================================================
+# Purpose:
+#   Reads raw Ontario yield table (YTF) files,
+#   extracts only the curves selected by the
+#   classifier, converts species-level yields
+#   into total stand volume, and standardizes
+#   the curves into annual age increments
+#   required by the AAC/Hanzlik workflow.
+#
+# General workflow:
+#
+#   AU classifier
+#          ↓
+#   selected curveIDs
+#          ↓
+#   search Ontario YTF files
+#          ↓
+#   extract matching curve
+#          ↓
+#   sum species volumes
+#          ↓
+#   standardize annual yield curve
+#          ↓
+#   AAC-ready yield tables
+#
+# Output:
+#   A named list of standardized annual
+#   yield tables indexed by curveID.
+#
+# Notes:
+#   - Ontario YTF files store yields by species.
+#   - AAC currently uses total stand volume.
+#   - Interpolation is handled before AAC
+#     so downstream modules only receive
+#     clean annual yield curves.
+# =========================================================
 
 parseON <- function(sim,
                     maxAge = 200) {
   
   library(data.table)
   
+  # =======================================================
+  # project data directory
+  # =======================================================
+  
   dPath <- dataPath(sim)
   
   message("Preparing Ontario yield tables...")
   
   # =======================================================
-  # curves selected by classifier
+  # curves selected by the classifier
+  #
+  # sim$AUtoCurve links analysis units (AU)
+  # to the Ontario yield curve numbers
+  # chosen during the classifier step.
+  #
+  # Only these curves will be extracted
+  # from the raw Ontario YTF files.
   # =======================================================
   
   curves_needed <- unique(
     sim$AUtoCurve$curveID
   )
   
+  # =======================================================
+  # remove missing curve IDs
+  # =======================================================
+  
   curves_needed <- curves_needed[
     !is.na(curves_needed)
   ]
   
   # =======================================================
-  # Ontario YTF files
+  # Ontario yield table files
+  #
+  # These are the raw provincial yield tables
+  # containing species-specific volumes
+  # at irregular age intervals.
   # =======================================================
   
   ytf_files <- list.files(
@@ -34,7 +88,14 @@ parseON <- function(sim,
   )
   
   # =======================================================
-  # species columns
+  # species volume columns expected in
+  # Ontario yield table files
+  #
+  # These columns are used only to build
+  # total stand volume curves.
+  #
+  # AAC/Hanzlik currently uses total volume,
+  # not species-specific yield trajectories.
   # =======================================================
   
   species_cols <- c(
@@ -48,22 +109,36 @@ parseON <- function(sim,
   
   # =======================================================
   # output object
+  #
+  # Stores standardized annual yield tables
+  # indexed by curveID.
   # =======================================================
   
   yieldTables <- list()
   
   # =======================================================
-  # loop over curves
+  # loop over all required curves
   # =======================================================
   
   for (curve_id in curves_needed) {
     
     message("Processing curve: ", curve_id)
     
+    # =====================================================
+    # tracking flag
+    #
+    # used to determine whether the curve
+    # was successfully located in any YTF file
+    # =====================================================
+    
     curve_found <- FALSE
     
     # ---------------------------------------------------
-    # search all YTF files
+    # search across all Ontario YTF files
+    #
+    # each Ontario region may store curves
+    # in different files, so all files are checked
+    # until the requested curve is found
     # ---------------------------------------------------
     
     for (f in ytf_files) {
@@ -73,20 +148,30 @@ parseON <- function(sim,
         basename(f)
       )
       
+      # -------------------------------------------------
+      # read Ontario yield table file
+      # -------------------------------------------------
+      
       yt <- fread(f)
       
       # -------------------------------------------------
-      # skip if curve absent
+      # skip file if the requested curve
+      # does not exist in this table
       # -------------------------------------------------
       
       if (!(curve_id %in% yt$CURVENO)) {
         next
       }
       
+      # -------------------------------------------------
+      # curve successfully found
+      # -------------------------------------------------
+      
       curve_found <- TRUE
       
       # -------------------------------------------------
-      # extract curve
+      # extract all rows belonging
+      # to the selected curve
       # -------------------------------------------------
       
       curve_dt <- yt[
@@ -94,7 +179,10 @@ parseON <- function(sim,
       ]
       
       # -------------------------------------------------
-      # sort by age
+      # sort by age to ensure proper interpolation
+      #
+      # standardizeYieldCurve assumes ages
+      # are ordered correctly
       # -------------------------------------------------
       
       setorder(
@@ -103,7 +191,11 @@ parseON <- function(sim,
       )
       
       # -------------------------------------------------
-      # available species columns only
+      # identify species columns that are
+      # actually present in this file
+      #
+      # not all Ontario files necessarily
+      # contain every species column
       # -------------------------------------------------
       
       spp_available <- intersect(
@@ -112,7 +204,9 @@ parseON <- function(sim,
       )
       
       # -------------------------------------------------
-      # check species columns
+      # safety check:
+      # ensure at least one species
+      # volume column exists
       # -------------------------------------------------
       
       if (length(spp_available) == 0) {
@@ -126,7 +220,14 @@ parseON <- function(sim,
       }
       
       # -------------------------------------------------
-      # total volume
+      # calculate total stand volume
+      #
+      # Ontario YTF files store yields
+      # separately by species.
+      #
+      # Here all species volumes are summed
+      # to produce a total stand yield curve
+      # required by the AAC workflow.
       # -------------------------------------------------
       
       curve_dt[
@@ -139,7 +240,9 @@ parseON <- function(sim,
       ]
       
       # -------------------------------------------------
-      # remove NA ages
+      # remove rows with missing ages
+      #
+      # interpolation requires valid ages
       # -------------------------------------------------
       
       curve_dt <- curve_dt[
@@ -147,7 +250,14 @@ parseON <- function(sim,
       ]
       
       # -------------------------------------------------
-      # annual interpolation
+      # standardize yield curve
+      #
+      # converts irregular Ontario age intervals
+      # into annual age increments:
+      #
+      #   age = 1:maxAge
+      #
+      # using linear interpolation
       # -------------------------------------------------
       
       yt_standard <- standardizeYieldCurve(
@@ -157,22 +267,26 @@ parseON <- function(sim,
       )
       
       # -------------------------------------------------
-      # save standardized curve
-      # -------------------------------------------------
-      # -------------------------------------------------
-      # save standardized curve
+      # store standardized yield table
+      #
+      # output is indexed by curveID
       # -------------------------------------------------
       
       yieldTables[[as.character(curve_id)]] <- list(yt_standard)
+      
       # -------------------------------------------------
-      # curve found → stop searching
+      # stop searching additional files
+      #
+      # the requested curve has already
+      # been found and processed
       # -------------------------------------------------
       
       break
     }
     
     # ---------------------------------------------------
-    # warning if missing
+    # warning if curve could not be found
+    # in any Ontario YTF file
     # ---------------------------------------------------
     
     if (!curve_found) {
@@ -183,6 +297,10 @@ parseON <- function(sim,
       )
     }
   }
+  
+  # =======================================================
+  # return standardized Ontario yield tables
+  # =======================================================
   
   return(yieldTables)
 }
