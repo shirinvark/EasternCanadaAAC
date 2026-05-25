@@ -204,8 +204,38 @@ Init <- function(sim) {
   sim$hanzlikPars <- lapply(
     sim$yieldTables,
     function(x) {
+      
+      # ---------------------------------------------------
+      # ON tables
+      # ---------------------------------------------------
+      
+      if ("volume" %in% names(x)) {
+        
+        yt <- x$volume
+        
+      } else {
+        
+        # -------------------------------------------------
+        # NL species-wise tables
+        # -------------------------------------------------
+        
+        numeric_cols <- names(x)[
+          sapply(x, is.numeric)
+        ]
+        
+        numeric_cols <- setdiff(
+          numeric_cols,
+          "age"
+        )
+        
+        yt <- rowSums(
+          x[, ..numeric_cols],
+          na.rm = TRUE
+        )
+      }
+      
       calcHanzlik(
-        x$volume,
+        yt,
         sim
       )
     }
