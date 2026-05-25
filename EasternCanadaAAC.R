@@ -228,10 +228,20 @@ Init <- function(sim) {
           "age"
         )
         
-        yt <- rowSums(
-          x[, numeric_cols, with = FALSE],
-          na.rm = TRUE
-        )
+        if (is.data.table(x)) {
+          
+          yt <- rowSums(
+            x[, numeric_cols, with = FALSE],
+            na.rm = TRUE
+          )
+          
+        } else {
+          
+          yt <- rowSums(
+            as.data.frame(x)[, numeric_cols, drop = FALSE],
+            na.rm = TRUE
+          )
+        }
       }
       
       calcHanzlik(
@@ -240,7 +250,6 @@ Init <- function(sim) {
       )
     }
   )
-  
   # =====================================================
   # Ensure names match analysis units
   # =====================================================
