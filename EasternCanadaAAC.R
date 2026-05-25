@@ -322,8 +322,12 @@ Plan <- function(sim) {
     AAC = {
       
       # Retrieve Hanzlik parameters for this AU
+      AU_name <- sim$AUlookup[
+        AU_numeric == .BY$AU
+      ]$analysisUnit
+      
       curveID <- sim$AUtoCurve[
-        AU == .BY$AU
+        AU == AU_name
       ]$curveID
       
       pars <- sim$hanzlikPars[[curveID]]
