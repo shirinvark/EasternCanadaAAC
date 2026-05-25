@@ -229,7 +229,7 @@ Init <- function(sim) {
         )
         
         yt <- rowSums(
-          x[, ..numeric_cols],
+          x[, numeric_cols, with = FALSE],
           na.rm = TRUE
         )
       }
