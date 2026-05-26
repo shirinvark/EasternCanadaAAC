@@ -326,8 +326,9 @@ Plan <- function(sim) {
     AAC = {
       
       # Retrieve Hanzlik parameters for this AU
+      # Retrieve matching curve ID
       curveID <- sim$AUtoCurve[
-        AU == .BY$AU
+        AU == .BY[["AU"]]
       ]$curveID
       
       pars <- sim$hanzlikPars[[curveID]]
