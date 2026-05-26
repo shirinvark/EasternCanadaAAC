@@ -326,12 +326,8 @@ Plan <- function(sim) {
     AAC = {
       
       # Retrieve Hanzlik parameters for this AU
-      AU_name <- sim$AUlookup[
-        AU_numeric == .BY$AU
-      ]$analysisUnit
-      
       curveID <- sim$AUtoCurve[
-        AU == AU_name
+        AU == .BY$AU
       ]$curveID
       
       pars <- sim$hanzlikPars[[curveID]]
@@ -385,13 +381,7 @@ Plan <- function(sim) {
         I_total      
     }
   ), by = AU]
-  AAC_by_AU[
-    ,
-    AU := sim$AUlookup[
-      match(AU, AU_numeric),
-      analysisUnit
-    ]
-  ]
+  
   # -------------------------------------------------------
   # 4. Compute cell area (hectares)
   # -------------------------------------------------------
