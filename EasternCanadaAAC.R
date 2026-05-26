@@ -292,7 +292,16 @@ Plan <- function(sim) {
   
   # Remove missing values
   dt <- dt[!is.na(AU) & !is.na(age)]
+  dt <- merge(
+    dt,
+    sim$pixelGroupToAU,
+    by = "pixelGroup",
+    all.x = TRUE
+  )
   
+  dt[, AU := analysisUnit]
+  
+  dt[, analysisUnit := NULL]
   # -------------------------------------------------------
   # 2. Prepare data
   # -------------------------------------------------------
