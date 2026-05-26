@@ -3,7 +3,7 @@ prepareYieldTables <- function(sim,
   
   if (is.null(sim$yieldTables)) {
     
-    standardizeYieldTables(
+    sim$yieldTables <- standardizeYieldTables(
       sim = sim,
       maxAge = maxAge
     )
