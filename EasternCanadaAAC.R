@@ -330,7 +330,15 @@ Plan <- function(sim) {
       curveID <- sim$AUtoCurve[
         AU == .BY[["AU"]]
       ]$curveID
+      print(.BY[["AU"]])
       
+      print(
+        sim$AUtoCurve[
+          AU == .BY[["AU"]]
+        ]
+      )
+      
+      print(curveID)
       pars <- sim$hanzlikPars[[curveID]]
       # Rotation age derived from maximum MAI (Mean Annual Increment)
       R <- pars$R
