@@ -303,7 +303,11 @@ Plan <- function(sim) {
   # 🔴 CRITICAL CHECK:
   # Ensure every AU has a corresponding yield table
   curveIDs <- unique(sim$AUtoCurve$curveID)
+  print(curveIDs)
   
+  print(names(sim$yieldTables))
+  
+  print(names(sim$hanzlikPars))
   if (!all(curveIDs %in% names(sim$hanzlikPars))) {
     stop("Some curveIDs do not match yieldTables!")
   }
