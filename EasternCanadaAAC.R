@@ -196,28 +196,25 @@ Init <- function(sim) {
     if (!is.null(yt)) {
       sim$yieldTables <- yt
     }
-  }  
+  }
+  
   # =====================================================
   # Compute Hanzlik parameters
   # =====================================================
   
-  sim$hanzlikPars <- lapply(
-    sim$yieldTables,
-    function(x) {
+  sim$hanzlikPars <- list()
+  
+  for (jur in names(sim$yieldTables)) {
+    
+    for (reg in names(sim$yieldTables[[jur]])) {
       
-      # ---------------------------------------------------
-      # ON tables
-      # ---------------------------------------------------
-      
-      if ("volume" %in% names(x)) {
+      for (cid in names(sim$yieldTables[[jur]][[reg]])) {
         
-        yt <- x$volume
+        x <- sim$yieldTables[[jur]][[reg]][[cid]]
         
-      } else {
-        
-        # -------------------------------------------------
-        # NL species-wise tables
-        # -------------------------------------------------
+        # ------------------------------------------------
+        # numeric species/volume columns
+        # ------------------------------------------------
         
         numeric_cols <- names(x)[
           sapply(x, is.numeric)
@@ -227,6 +224,10 @@ Init <- function(sim) {
           numeric_cols,
           "age"
         )
+        
+        # ------------------------------------------------
+        # build total yield vector
+        # ------------------------------------------------
         
         if (is.data.table(x)) {
           
@@ -242,23 +243,28 @@ Init <- function(sim) {
             na.rm = TRUE
           )
         }
+        
+        # ------------------------------------------------
+        # store Hanzlik pars by curveID
+        # ------------------------------------------------
+        
+        sim$hanzlikPars[[as.character(cid)]] <- calcHanzlik(
+          yt,
+          sim
+        )
       }
-      
-      calcHanzlik(
-        yt,
-        sim
-      )
     }
-  )
+  }
+  
   # =====================================================
-  # Ensure names match analysis units
+  # Debug checks
   # =====================================================
   
-  names(sim$hanzlikPars) <- names(sim$yieldTables)
+  print("===== Hanzlik curve IDs =====")
+  print(names(sim$hanzlikPars)[1:20])
   
   return(invisible(sim))
 }
-
 # =========================================================
 # Plan function (AAC calculation)
 # =========================================================
@@ -275,6 +281,49 @@ Plan <- function(sim) {
     AU  = AUvals,
     age = ageVals
   )
+  print("===== BEFORE AU CONVERSION =====")
+  print(unique(dt$AU))
+  print("===== BEFORE AU CONVERSION =====")
+  print(unique(dt$AU))
+  
+  dt[
+    ,
+    AU := fifelse(
+      AU == 1, "SB1",
+      fifelse(
+        AU == 2, "PR1",
+        fifelse(
+          AU == 3, "LC1",
+          NA_character_
+        )
+      )
+    )
+  ]
+  
+  print("===== AFTER AU CONVERSION =====")
+  print(unique(dt$AU))
+  
+  print("===== DT AFTER CONVERSION =====")
+  print(head(dt))
+  
+  print("===== AUtoCurve =====")
+  print(sim$AUtoCurve)
+  
+  print("===== MATCH TEST =====")
+  
+  dt <- sim$AUtoCurve[
+    dt,
+    on = "AU"
+  ]
+  
+  print(dt)
+  
+  print("===== DT AU TABLE =====")
+  print(table(dt$AU))
+  
+  print("===== AUtoCurve AU TABLE =====")
+  print(table(sim$AUtoCurve$AU))
+  
   # -------------------------------------------------------
   # 🔥 join effective area from classifier
   # -------------------------------------------------------
@@ -292,16 +341,16 @@ Plan <- function(sim) {
   
   # Remove missing values
   dt <- dt[!is.na(AU) & !is.na(age)]
-  dt <- merge(
-    dt,
-    sim$pixelGroupToAU,
-    by = "pixelGroup",
-    all.x = TRUE
-  )
+  # dt <- merge(
+  #  dt,
+  # sim$pixelGroupToAU,
+  # by = "pixelGroup",
+  # all.x = TRUE
+  #)
   
-  dt[, AU := analysisUnit]
+  #dt[, AU := analysisUnit]
   
-  dt[, analysisUnit := NULL]
+  #dt[, analysisUnit := NULL]
   # -------------------------------------------------------
   # 2. Prepare data
   # -------------------------------------------------------
@@ -336,17 +385,7 @@ Plan <- function(sim) {
       
       # Retrieve Hanzlik parameters for this AU
       # Retrieve matching curve ID
-      curveID <- sim$AUtoCurve[
-        AU == .BY[["AU"]]
-      ]$curveID
-      print(.BY[["AU"]])
-      
-      print(
-        sim$AUtoCurve[
-          AU == .BY[["AU"]]
-        ]
-      )
-      
+      curveID <- unique(curveID)[1]
       print(curveID)
       pars <- sim$hanzlikPars[[curveID]]
       # Rotation age derived from maximum MAI (Mean Annual Increment)
