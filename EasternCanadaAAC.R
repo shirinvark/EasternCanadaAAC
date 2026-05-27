@@ -493,7 +493,8 @@ Plan <- function(sim) {
   # pixelGroupMap (fallback)
   # =========================================================
   
-  if (!is.null(sim$pixelGroupMap) && inherits(sim$pixelGroupMap, "SpatRaster")) {
+  if (!is.null(sim$pixelGroupMap) &&
+      inherits(sim$pixelGroupMap, "SpatRaster")) {
     
     message("Using supplied pixelGroupMap")
     
@@ -503,7 +504,22 @@ Plan <- function(sim) {
     
     r <- sim$analysisUnitMap
     
-    terra::values(r) <- 1:terra::ncell(r)
+    if (!is.null(sim$classification)) {
+      
+      pg <- unique(
+        sim$classification$pixelGroup
+      )
+      
+      terra::values(r) <- sample(
+        pg,
+        terra::ncell(r),
+        replace = TRUE
+      )
+      
+    } else {
+      
+      terra::values(r) <- 1:terra::ncell(r)
+    }
     
     sim$pixelGroupMap <- r
   }
