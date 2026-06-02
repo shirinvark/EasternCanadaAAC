@@ -275,29 +275,81 @@ Plan <- function(sim) {
   # -------------------------------------------------------
   AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
   ageVals <- as.vector(terra::values(sim$standAgeMap))
+  cat("\n===== AUVALS CHECK =====\n")
   
+  print(
+    table(
+      AUvals,
+      useNA = "always"
+    )
+  )
+  cat("\n===== RAW INPUT CHECK =====\n")
+  
+  print(head(AUvals, 20))
+  
+  print(head(
+    as.vector(
+      terra::values(sim$pixelGroupMap)
+    ),
+    20
+  ))
+  
+  print(head(ageVals, 20))
+  
+  cat("\nLengths:\n")
+  
+  print(length(AUvals))
+  
+  print(length(
+    as.vector(
+      terra::values(sim$pixelGroupMap)
+    )
+  ))
+  
+  print(length(ageVals))
   dt <- data.table(
     pixelGroup = as.vector(terra::values(sim$pixelGroupMap)),
     AU  = AUvals,
     age = ageVals
+  )
+  cat("\n===== DT AU CHECK =====\n")
+  
+  print(
+    table(
+      dt$AU,
+      useNA = "always"
+    )
   )
   print("===== BEFORE AU CONVERSION =====")
   print(unique(dt$AU))
   print("===== BEFORE AU CONVERSION =====")
   print(unique(dt$AU))
   
+  cats_dt <- as.data.table(
+    terra::cats(sim$analysisUnitMap)[[1]]
+  )
+  
+  setnames(
+    cats_dt,
+    c("value", "label"),
+    c("AU", "AU_name")
+  )
+  
+  dt <- merge(
+    dt,
+    cats_dt,
+    by = "AU",
+    all.x = TRUE
+  )
+  
   dt[
     ,
-    AU := fifelse(
-      AU == 1, "SB1",
-      fifelse(
-        AU == 2, "PR1",
-        fifelse(
-          AU == 3, "LC1",
-          NA_character_
-        )
-      )
-    )
+    AU := AU_name
+  ]
+  
+  dt[
+    ,
+    AU_name := NULL
   ]
   
   print("===== AFTER AU CONVERSION =====")
@@ -325,8 +377,32 @@ Plan <- function(sim) {
   print(table(sim$AUtoCurve$AU))
   
   # -------------------------------------------------------
+  # Remove unusable cells FIRST
+  # -------------------------------------------------------
+  
+  dt <- dt[
+    !is.na(pixelGroup) &
+      !is.na(AU) &
+      !is.na(age)
+  ]
+  
+  # -------------------------------------------------------
   # 🔥 join effective area from classifier
   # -------------------------------------------------------
+  
+  cat("\n===== DT BEFORE MERGE =====\n")
+  
+  print(
+    table(
+      dt$AU,
+      useNA = "always"
+    )
+  )
+  
+  print(
+    head(dt)
+  )
+  
   dt <- merge(
     dt,
     sim$pixelAreaDT[, .(pixelGroup, effectiveArea)],
@@ -334,23 +410,9 @@ Plan <- function(sim) {
     all.x = TRUE
   )
   
-  # Check for missing effective area (should not happen)
   if (any(is.na(dt$effectiveArea))) {
     stop("❌ NA in effectiveArea — join with pixelAreaDT failed")
   }
-  
-  # Remove missing values
-  dt <- dt[!is.na(AU) & !is.na(age)]
-  # dt <- merge(
-  #  dt,
-  # sim$pixelGroupToAU,
-  # by = "pixelGroup",
-  # all.x = TRUE
-  #)
-  
-  #dt[, AU := analysisUnit]
-  
-  #dt[, analysisUnit := NULL]
   # -------------------------------------------------------
   # 2. Prepare data
   # -------------------------------------------------------
