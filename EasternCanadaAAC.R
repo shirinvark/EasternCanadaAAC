@@ -51,7 +51,7 @@ defineModule(sim, list(
       expectsInput("pixelGroupMap", "SpatRaster", "Pixel groups"),
       expectsInput("pixelAreaDT", "data.table", "Effective area"),
       
-      expectsInput("standAgeMap", "SpatRaster",
+      expectsInput("standAge_250m", "SpatRaster",
                    "Stand age per pixel"),
       expectsInput("AUtoCurve", "data.table",
                    "Mapping between analysis units and yield curves"),
@@ -274,7 +274,7 @@ Plan <- function(sim) {
   # 1. Extract Analysis Unit (AU) and stand age values
   # -------------------------------------------------------
   AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
-  ageVals <- as.vector(terra::values(sim$standAgeMap))
+  ageVals <- as.vector(terra::values(sim$standAge_250m))
   cat("\n===== AUVALS CHECK =====\n")
   
   print(
@@ -504,7 +504,7 @@ Plan <- function(sim) {
   # -------------------------------------------------------
   # 4. Compute cell area (hectares)
   # -------------------------------------------------------
-  #cellArea_ha <- prod(terra::res(sim$standAgeMap)) / 10000
+  #cellArea_ha <- prod(terra::res(sim$standAge_250m)) / 10000
   
   # -------------------------------------------------------
   # 5. Total AAC (m3/year)
@@ -565,30 +565,30 @@ Plan <- function(sim) {
   }
   
   # =========================================================
-  # standAgeMap
+  # standAge_250m
   # =========================================================
   
   # Check if standAgeMap is already provided
-  if (!is.null(sim$standAgeMap) &&
-      inherits(sim$standAgeMap, "SpatRaster")) {
+  if (!is.null(sim$standAge_250m) &&
+      inherits(sim$standAge_250m, "SpatRaster")) {
     
-    message("Using supplied standAgeMap")
+    message("Using supplied standAge_250m")
     
   } else {
     
     # Create a dummy stand age raster
-    message("Creating fake standAgeMap...")
+    message("Creating fake standAge_250m...")
     
-    standAgeMap <- terra::rast(
+    standAge_250m <- terra::rast(
       nrows = 10, ncols = 10,
       xmin = 0, xmax = 1000,
       ymin = 0, ymax = 1000
     )
     
     # Assign random stand ages (1–80 years)
-    terra::values(standAgeMap) <- sample(1:80, 100, replace = TRUE)
+    terra::values(standAge_250m) <- sample(1:80, 100, replace = TRUE)
     
-    sim$standAgeMap <- standAgeMap
+    sim$standAge_250m <- standAge_250m
   }
   # =========================================================
   # pixelGroupMap (fallback)
