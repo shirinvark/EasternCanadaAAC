@@ -301,13 +301,7 @@ Plan <- function(sim) {
   print(
     head(dt)
   )
-  
-  dt <- merge(
-    dt,
-    sim$pixelAreaDT[, .(pixelGroup, effectiveArea)],
-    by = "pixelGroup",
-    all.x = TRUE
-  )
+ 
   
   a <- .SD$effectiveArea
   # -------------------------------------------------------
