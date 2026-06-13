@@ -183,87 +183,40 @@ calcHanzlik <- function(yt, sim){
 # =========================================================
 # Initialization function
 # =========================================================
-Init <- function(sim) {
+sim$hanzlikPars <- list()
+
+for (cid in names(sim$yieldTables)) {
   
-  # =====================================================
-  # Prepare annual yield curves
-  # =====================================================
+  x <- sim$yieldTables[[cid]]
   
-  if (is.null(sim$yieldTables)) {
+  numeric_cols <- names(x)[
+    sapply(x, is.numeric)
+  ]
+  
+  numeric_cols <- setdiff(
+    numeric_cols,
+    "age"
+  )
+  
+  if (is.data.table(x)) {
     
-    yt <- prepareYieldTables(sim)
+    yt <- rowSums(
+      x[, numeric_cols, with = FALSE],
+      na.rm = TRUE
+    )
     
-    if (!is.null(yt)) {
-      sim$yieldTables <- yt
-    }
+  } else {
+    
+    yt <- rowSums(
+      as.data.frame(x)[, numeric_cols, drop = FALSE],
+      na.rm = TRUE
+    )
   }
   
-  # =====================================================
-  # Compute Hanzlik parameters
-  # =====================================================
-  
-  sim$hanzlikPars <- list()
-  
-  for (jur in names(sim$yieldTables)) {
-    
-    for (reg in names(sim$yieldTables[[jur]])) {
-      
-      for (cid in names(sim$yieldTables[[jur]][[reg]])) {
-        
-        x <- sim$yieldTables[[jur]][[reg]][[cid]]
-        
-        # ------------------------------------------------
-        # numeric species/volume columns
-        # ------------------------------------------------
-        
-        numeric_cols <- names(x)[
-          sapply(x, is.numeric)
-        ]
-        
-        numeric_cols <- setdiff(
-          numeric_cols,
-          "age"
-        )
-        
-        # ------------------------------------------------
-        # build total yield vector
-        # ------------------------------------------------
-        
-        if (is.data.table(x)) {
-          
-          yt <- rowSums(
-            x[, numeric_cols, with = FALSE],
-            na.rm = TRUE
-          )
-          
-        } else {
-          
-          yt <- rowSums(
-            as.data.frame(x)[, numeric_cols, drop = FALSE],
-            na.rm = TRUE
-          )
-        }
-        
-        # ------------------------------------------------
-        # store Hanzlik pars by curveID
-        # ------------------------------------------------
-        
-        sim$hanzlikPars[[as.character(cid)]] <- calcHanzlik(
-          yt,
-          sim
-        )
-      }
-    }
-  }
-  
-  # =====================================================
-  # Debug checks
-  # =====================================================
-  
-  print("===== Hanzlik curve IDs =====")
-  print(names(sim$hanzlikPars)[1:20])
-  
-  return(invisible(sim))
+  sim$hanzlikPars[[as.character(cid)]] <- calcHanzlik(
+    yt,
+    sim
+  )
 }
 # =========================================================
 # Plan function (AAC calculation)
