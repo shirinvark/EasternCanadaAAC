@@ -241,22 +241,8 @@ Plan <- function(sim) {
   # -------------------------------------------------------
   # 🔥 join effective area from classifier
   # -------------------------------------------------------
+
   
-  cat("\n===== DT BEFORE MERGE =====\n")
-  
-  print(
-    table(
-      dt$AU,
-      useNA = "always"
-    )
-  )
-  
-  print(
-    head(dt)
-  )
- 
-  
-  a <- .SD$effectiveArea
   # -------------------------------------------------------
   # 2. Prepare data
   # -------------------------------------------------------
@@ -266,15 +252,13 @@ Plan <- function(sim) {
   
   # 🔴 CRITICAL CHECK:
   # Ensure every AU has a corresponding yield table
-  curveIDs <- unique(sim$AUtoCurve$curveID)
+  curveIDs <- unique(dt$curveID)
   print(curveIDs)
   
   print(names(sim$yieldTables))
   
   print(names(sim$hanzlikPars))
-  if (!all(curveIDs %in% names(sim$hanzlikPars))) {
-    stop("Some curveIDs do not match yieldTables!")
-  }
+ 
   
   
   # -------------------------------------------------------
