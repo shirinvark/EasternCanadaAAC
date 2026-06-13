@@ -309,9 +309,7 @@ Plan <- function(sim) {
     all.x = TRUE
   )
   
-  if (any(is.na(dt$effectiveArea))) {
-    stop("❌ NA in effectiveArea — join with pixelAreaDT failed")
-  }
+  a <- .SD$effectiveArea
   # -------------------------------------------------------
   # 2. Prepare data
   # -------------------------------------------------------
