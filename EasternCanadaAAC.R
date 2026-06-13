@@ -46,17 +46,17 @@ defineModule(sim, list(
   ),
     inputObjects = bindrows(
       
-      expectsInput("analysisUnitMap", "SpatRaster",
-                   "Map of analysis units per pixel"),
-      expectsInput("pixelGroupMap", "SpatRaster", "Pixel groups"),
-      expectsInput("pixelAreaDT", "data.table", "Effective area"),
+      expectsInput(
+        "standDT",
+        "data.table",
+        "Stand-level table produced by classifier"
+      ),
       
-      expectsInput("standAge_250m", "SpatRaster",
-                   "Stand age per pixel"),
-      expectsInput("AUtoCurve", "data.table",
-                   "Mapping between analysis units and yield curves"),
-      expectsInput("yieldTables", "list",
-                   "Yield tables by curve"),
+      expectsInput(
+        "yieldTables",
+        "list",
+        "Yield tables by curve"
+      ),
   ),
     outputObjects = bindrows(
   createsOutput("AAC", "numeric",
@@ -273,108 +273,7 @@ Plan <- function(sim) {
   # -------------------------------------------------------
   # 1. Extract Analysis Unit (AU) and stand age values
   # -------------------------------------------------------
-  AUvals  <- as.vector(terra::values(sim$analysisUnitMap))
-  ageVals <- as.vector(terra::values(sim$standAge_250m))
-  cat("\n===== AUVALS CHECK =====\n")
-  
-  print(
-    table(
-      AUvals,
-      useNA = "always"
-    )
-  )
-  cat("\n===== RAW INPUT CHECK =====\n")
-  
-  print(head(AUvals, 20))
-  
-  print(head(
-    as.vector(
-      terra::values(sim$pixelGroupMap)
-    ),
-    20
-  ))
-  
-  print(head(ageVals, 20))
-  
-  cat("\nLengths:\n")
-  
-  print(length(AUvals))
-  
-  print(length(
-    as.vector(
-      terra::values(sim$pixelGroupMap)
-    )
-  ))
-  
-  print(length(ageVals))
-  dt <- data.table(
-    pixelGroup = as.vector(terra::values(sim$pixelGroupMap)),
-    AU  = AUvals,
-    age = ageVals
-  )
-  cat("\n===== DT AU CHECK =====\n")
-  
-  print(
-    table(
-      dt$AU,
-      useNA = "always"
-    )
-  )
-  print("===== BEFORE AU CONVERSION =====")
-  print(unique(dt$AU))
-  print("===== BEFORE AU CONVERSION =====")
-  print(unique(dt$AU))
-  
-  cats_dt <- as.data.table(
-    terra::cats(sim$analysisUnitMap)[[1]]
-  )
-  
-  setnames(
-    cats_dt,
-    c("value", "label"),
-    c("AU", "AU_name")
-  )
-  
-  dt <- merge(
-    dt,
-    cats_dt,
-    by = "AU",
-    all.x = TRUE
-  )
-  
-  dt[
-    ,
-    AU := AU_name
-  ]
-  
-  dt[
-    ,
-    AU_name := NULL
-  ]
-  
-  print("===== AFTER AU CONVERSION =====")
-  print(unique(dt$AU))
-  
-  print("===== DT AFTER CONVERSION =====")
-  print(head(dt))
-  
-  print("===== AUtoCurve =====")
-  print(sim$AUtoCurve)
-  
-  print("===== MATCH TEST =====")
-  
-  dt <- sim$AUtoCurve[
-    dt,
-    on = "AU"
-  ]
-  
-  print(dt)
-  
-  print("===== DT AU TABLE =====")
-  print(table(dt$AU))
-  
-  print("===== AUtoCurve AU TABLE =====")
-  print(table(sim$AUtoCurve$AU))
+  dt <- copy(sim$standDT)
   
   # -------------------------------------------------------
   # Remove unusable cells FIRST
