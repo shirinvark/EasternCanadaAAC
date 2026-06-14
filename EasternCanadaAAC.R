@@ -272,10 +272,31 @@ Plan <- function(sim) {
       print(curveID)
       pars <- sim$hanzlikPars[[curveID]]
       # Rotation age derived from maximum MAI (Mean Annual Increment)
+      if (is.null(pars)) {
+        stop(
+          "No Hanzlik parameters found for curveID: ",
+          curveID
+        )
+      }
+      
       R <- pars$R
+      # -------------------------------------------------------
+      
+          # Clamp ages to valid range
+          ages <- pmin(pmax(age, 1), length(pars$V))
+          ages <- as.integer(ages)
       if (isTRUE(getOption("aac.debug", TRUE))) {
         message("AU: ", .BY$AU, " | Rotation age: ", R)
-      }        
+      }      
+          if (isTRUE(getOption("aac.debug", TRUE))) {
+            message(
+              "AU: ",
+              .BY$AU,
+              " | Rotation age: ",
+              R
+            )
+          }
+          
       # Clamp ages to valid range
       ages <- pmin(pmax(age, 1), length(pars$V))
       ages <- as.integer(ages)
@@ -313,8 +334,10 @@ Plan <- function(sim) {
         V_mature /
           (
             P(sim)$rotationPeriodMultiplier *
-              R +
-              P(sim)$rotationPeriodShift
+              (
+                R +
+                  P(sim)$rotationPeriodShift
+              )
           )
       ) +
         I_total
