@@ -288,18 +288,7 @@ Plan <- function(sim) {
       if (isTRUE(getOption("aac.debug", TRUE))) {
         message("AU: ", .BY$AU, " | Rotation age: ", R)
       }      
-          if (isTRUE(getOption("aac.debug", TRUE))) {
-            message(
-              "AU: ",
-              .BY$AU,
-              " | Rotation age: ",
-              R
-            )
-          }
-          
-      # Clamp ages to valid range
-      ages <- pmin(pmax(age, 1), length(pars$V))
-      ages <- as.integer(ages)
+         
       
       # ----------------------------------------
       # Split stands based on rotation age
