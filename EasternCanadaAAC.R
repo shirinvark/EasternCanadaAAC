@@ -47,9 +47,9 @@ defineModule(sim, list(
     inputObjects = bindrows(
       
       expectsInput(
-        "standDT",
+        "aacInput",
         "data.table",
-        "Stand-level table produced by classifier"
+        "AU-age-area table produced by classifier"
       ),
       
       expectsInput(
@@ -180,43 +180,39 @@ calcHanzlik <- function(yt, sim){
   )
 }
 
-# =========================================================
-# Initialization function
-# =========================================================
-sim$hanzlikPars <- list()
+##################INIT
 
-for (cid in names(sim$yieldTables)) {
+
+Init <- function(sim) {
   
-  x <- sim$yieldTables[[cid]]
+  sim$hanzlikPars <- list()
   
-  numeric_cols <- names(x)[
-    sapply(x, is.numeric)
-  ]
-  
-  numeric_cols <- setdiff(
-    numeric_cols,
-    "age"
-  )
-  
-  if (is.data.table(x)) {
+  for (cid in names(sim$yieldTables)) {
+    
+    x <- sim$yieldTables[[cid]]
+    
+    numeric_cols <- names(x)[
+      sapply(x, is.numeric)
+    ]
+    
+    numeric_cols <- setdiff(
+      numeric_cols,
+      "age"
+    )
     
     yt <- rowSums(
       x[, numeric_cols, with = FALSE],
       na.rm = TRUE
     )
     
-  } else {
-    
-    yt <- rowSums(
-      as.data.frame(x)[, numeric_cols, drop = FALSE],
-      na.rm = TRUE
-    )
+    sim$hanzlikPars[[as.character(cid)]] <-
+      calcHanzlik(
+        yt,
+        sim
+      )
   }
   
-  sim$hanzlikPars[[as.character(cid)]] <- calcHanzlik(
-    yt,
-    sim
-  )
+  return(sim)
 }
 # =========================================================
 # Plan function (AAC calculation)
@@ -226,16 +222,15 @@ Plan <- function(sim) {
   # -------------------------------------------------------
   # 1. Extract Analysis Unit (AU) and stand age values
   # -------------------------------------------------------
-  dt <- copy(sim$standDT)
-  
+  dt <- copy(sim$aacInput)  
   # -------------------------------------------------------
   # Remove unusable cells FIRST
   # -------------------------------------------------------
   
   dt <- dt[
-    !is.na(pixelGroup) &
-      !is.na(AU) &
-      !is.na(age)
+    !is.na(AU) &
+      !is.na(age) &
+      !is.na(curveID)
   ]
   
   # -------------------------------------------------------
@@ -250,15 +245,6 @@ Plan <- function(sim) {
   # Convert age to integer for indexing yield vectors
   dt[, age := floor(age)]
   
-  # 🔴 CRITICAL CHECK:
-  # Ensure every AU has a corresponding yield table
-  curveIDs <- unique(dt$curveID)
-  print(curveIDs)
-  
-  print(names(sim$yieldTables))
-  
-  print(names(sim$hanzlikPars))
- 
   
   
   # -------------------------------------------------------
@@ -273,9 +259,16 @@ Plan <- function(sim) {
   AAC_by_AU <- dt[, .(
     AAC = {
       
-      # Retrieve Hanzlik parameters for this AU
-      # Retrieve matching curve ID
-      curveID <- unique(curveID)[1]
+      curveID <- unique(curveID)
+      
+      if (length(curveID) != 1) {
+        stop(
+          "AU mapped to multiple curveIDs: ",
+          paste(curveID, collapse = ", ")
+        )
+      }
+      
+      curveID <- curveID[1]
       print(curveID)
       pars <- sim$hanzlikPars[[curveID]]
       # Rotation age derived from maximum MAI (Mean Annual Increment)
@@ -294,25 +287,8 @@ Plan <- function(sim) {
       # Immature stands: age < R → still growing
       mature_idx   <- ages >= R
       immature_idx <- ages < R
-      
-      # Check area exists
-      if (!"effectiveArea" %in% names(.SD)) {
-        stop("❌ effectiveArea missing — classifier not connected properly")
-      }
-      
-      a <- effectiveArea
-      
       # ----------------------------------------
-      # Compute mature volume
-      # ----------------------------------------
-      # Total standing volume in stands older than rotation age
-      V_mature <- sum(pars$V[ages[mature_idx]] * a[mature_idx])
-      # ----------------------------------------
-      # Compute growth from immature stands
-      # ----------------------------------------
-      # Total annual increment from younger stands
-      I_total  <- sum(pars$I[ages[immature_idx]] * a[immature_idx])
-      
+     
       # ----------------------------------------
       # Hanzlik AAC formula
       # ----------------------------------------
@@ -322,13 +298,32 @@ Plan <- function(sim) {
       # - Growth from immature stands is added directly
       #
       # This ensures sustained yield over time
-      (V_mature /
-         (P(sim)$rotationPeriodMultiplier *
-            (R + P(sim)$rotationPeriodShift))) +
-        I_total      
+      a <- area
+      
+      V_mature <- sum(
+        pars$V[ages[mature_idx]] *
+          a[mature_idx]
+      )
+      
+      I_total <- sum(
+        pars$I[ages[immature_idx]] *
+          a[immature_idx]
+      )
+      AAC <- (
+        V_mature /
+          (
+            P(sim)$rotationPeriodMultiplier *
+              R +
+              P(sim)$rotationPeriodShift
+          )
+      ) +
+        I_total
+      
+      AAC
     }
-  ), by = AU]
-  
+  ),
+  by = AU
+  ]
   # -------------------------------------------------------
   # 4. Compute cell area (hectares)
   # -------------------------------------------------------
