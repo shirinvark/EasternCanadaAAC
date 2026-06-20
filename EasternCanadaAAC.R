@@ -173,8 +173,10 @@ calcHanzlik <- function(yt, sim){
   return(
     list(
       R = R,
-      I = inc,
       V = yt,
+      I = inc,
+      MAI = vt,
+      maxMAI = max(vt, na.rm = TRUE),
       hVec = hVec
     )
   )
